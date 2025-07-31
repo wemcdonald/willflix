@@ -7,7 +7,17 @@
       "Bash(git add:*)",
       "Bash(git-crypt status:*)",
       "Bash(git commit:*)",
-      "WebFetch(domain:www.davidbuhlman.com)"
+      "WebFetch(domain:www.davidbuhlman.com)",
+      "Bash(sudo mkdir:*)",
+      "Bash(sudo chown:*)",
+      "Bash(sudo chmod:*)",
+      "WebFetch(domain:www.audiobookshelf.org)",
+      "Bash(docker-compose restart:*)",
+      "Bash(docker compose:*)",
+      "WebFetch(domain:audiobooks.willflix.org)",
+      "Bash(docker logs:*)",
+      "Bash(docker exec:*)",
+      "Bash(docker:*)"
     ],
     "deny": []
   }
