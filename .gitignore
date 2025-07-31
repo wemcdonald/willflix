@@ -1,0 +1,15 @@
+# Exclude application data and backups
+appdata/
+backup/
+
+# Exclude log files
+*.log
+
+# Exclude temporary files
+*.tmp
+*.swp
+*~
+
+# Exclude OS files
+.DS_Store
+Thumbs.db
