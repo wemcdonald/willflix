@@ -1,0 +1,77 @@
+#!/bin/bash
+# sendmail wrapper that properly handles mail command arguments
+
+# Parse arguments - mail command sends various flags
+RECIPIENTS=()
+while [[ $# -gt 0 ]]; do
+    case $1 in
+        -oi|-i|-t|-f|-F|-r|-R)
+            # These are sendmail flags, ignore them
+            shift
+            ;;
+        -f)
+            # From address flag, ignore the next argument too
+            shift 2
+            ;;
+        -*)
+            # Any other flag, ignore
+            shift
+            ;;
+        *)
+            # This should be a recipient
+            RECIPIENTS+=("$1")
+            shift
+            ;;
+    esac
+done
+
+# Read email content from stdin
+EMAIL_CONTENT=$(cat)
+
+# Extract recipients from email headers if not provided as arguments
+if [ ${#RECIPIENTS[@]} -eq 0 ]; then
+    RECIPIENTS=($(echo "$EMAIL_CONTENT" | grep -i "^To:" | cut -d: -f2- | tr ',' '\n' | sed 's/^ *//g' | sed 's/ *$//g'))
+fi
+
+# Extract subject from email content
+SUBJECT=$(echo "$EMAIL_CONTENT" | grep -i "^Subject:" | head -1 | cut -d: :q-f2- | sed 's/^ *//')
+if [ -z "$SUBJECT" ]; then
+    SUBJECT="Message from $(hostname)"
+fi
+
+# Get the message body (everything after the first blank line)
+BODY=$(echo "$EMAIL_CONTENT" | sed '1,/^$/d')
+
+# If no body found, use the entire content
+if [ -z "$BODY" ]; then
+    BODY="$EMAIL_CONTENT"
+fi
+
+# Send to each recipient
+for RECIPIENT in "${RECIPIENTS[@]}"; do
+    if [ -n "$RECIPIENT" ]; then
+        # Clean up recipient address
+        CLEAN_RECIPIENT=$(echo "$RECIPIENT" | sed 's/[<>]//g' | tr -d '\r\n')
+        
+        # Use proper SMTP conversation
+        {
+            sleep 0.1
+            echo "HELO $(hostname)"
+            sleep 0.5
+            echo "MAIL FROM: <root@$(hostname)>"
+            sleep 0.5
+            echo "RCPT TO: <$CLEAN_RECIPIENT>"
+            sleep 0.5
+            echo "DATA"
+            sleep 0.5
+            echo "From: root@$(hostname)"
+            echo "To: $CLEAN_RECIPIENT"
+            echo "Subject: $SUBJECT"
+            echo ""
+            echo "$BODY"
+            echo "."
+            sleep 0.5
+            echo "QUIT"
+        } | nc localhost 25 >/dev/null 2>&1
+    fi
+done

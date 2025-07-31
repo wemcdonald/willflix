@@ -1,0 +1,1 @@
+sudo update-alternatives --install /usr/sbin/sendmail sendmail /docker/bin/sendmail-docker 50
