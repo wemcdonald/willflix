@@ -17,7 +17,15 @@
       "WebFetch(domain:audiobooks.willflix.org)",
       "Bash(docker logs:*)",
       "Bash(docker exec:*)",
-      "Bash(docker:*)"
+      "Bash(docker:*)",
+      "Bash(sqlite3:*)",
+      "Bash(chmod:*)",
+      "Bash(/docker/bin/add-user.sh:*)",
+      "Bash(ls:*)",
+      "Bash(find:*)",
+      "Bash(/docker/bin/add-calibre-user:*)",
+      "Bash(cp:*)",
+      "Bash(/docker/bin/sync-users:*)"
     ],
     "deny": []
   }

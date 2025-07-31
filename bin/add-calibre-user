@@ -1,0 +1,117 @@
+#!/bin/bash
+
+# Add User Script for Calibre-Web-Automated
+# Usage: ./add-calibre-user <username> <email> [role]
+# Role options: admin, user (default: user)
+
+set -e
+
+# Load configuration
+source /docker/config/secrets/authentik_api_env
+
+# Check required environment variables
+if [ -z "$CALIBRE_USER_ROLE" ] || [ -z "$CALIBRE_ADMIN_ROLE" ]; then
+    echo -e "${RED}[ERROR]${NC} Missing required environment variables:"
+    [ -z "$CALIBRE_USER_ROLE" ] && echo "  - CALIBRE_USER_ROLE not set"
+    [ -z "$CALIBRE_ADMIN_ROLE" ] && echo "  - CALIBRE_ADMIN_ROLE not set"
+    echo "Please check /docker/config/secrets/authentik_api_env"
+    exit 1
+fi
+
+# Configuration
+CALIBRE_DB="/docker/appdata/calibre-web-automated/app.db"
+
+# Colors for output
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+NC='\033[0m' # No Color
+
+# Function to print colored output
+print_status() {
+    echo -e "${GREEN}[INFO]${NC} $1"
+}
+
+print_warning() {
+    echo -e "${YELLOW}[WARN]${NC} $1"
+}
+
+print_error() {
+    echo -e "${RED}[ERROR]${NC} $1"
+}
+
+# Function to generate password hash
+generate_password_hash() {
+    # Generate a random password since we're using SSO
+    local random_pass=$(openssl rand -base64 32)
+    echo "$random_pass" | openssl passwd -6 -stdin
+}
+
+# Check arguments
+if [ $# -lt 2 ] || [ $# -gt 3 ]; then
+    echo "Usage: $0 <username> <email> [role]"
+    echo "Role options: admin, user (default: user)"
+    exit 1
+fi
+
+USERNAME="$1"
+EMAIL="$2"
+ROLE="${3:-user}"
+
+# Validate role
+if [[ "$ROLE" != "admin" && "$ROLE" != "user" ]]; then
+    print_error "Invalid role. Use 'admin' or 'user'"
+    exit 1
+fi
+
+# Check if database exists
+if [ ! -f "$CALIBRE_DB" ]; then
+    print_error "Calibre-Web database not found at $CALIBRE_DB"
+    exit 1
+fi
+
+print_status "Adding user: $USERNAME ($EMAIL) with role: $ROLE"
+
+# Generate data
+PASSWORD_HASH=$(generate_password_hash)
+
+# Set Calibre-Web role using environment variables
+if [ "$ROLE" = "admin" ]; then
+    CALIBRE_ROLE=$CALIBRE_ADMIN_ROLE
+else
+    CALIBRE_ROLE=$CALIBRE_USER_ROLE
+fi
+
+# Check if user already exists in Calibre-Web (upsert logic)
+EXISTING_USERNAME=$(sqlite3 "$CALIBRE_DB" "SELECT COUNT(*) FROM user WHERE name='$USERNAME';")
+EXISTING_EMAIL=$(sqlite3 "$CALIBRE_DB" "SELECT COUNT(*) FROM user WHERE email='$EMAIL';")
+
+if [ "$EXISTING_USERNAME" -gt 0 ] && [ "$EXISTING_EMAIL" -gt 0 ]; then
+    print_warning "User already exists (both username and email found)"
+elif [ "$EXISTING_USERNAME" -gt 0 ]; then
+    print_error "Username '$USERNAME' already exists with different email"
+    exit 1
+elif [ "$EXISTING_EMAIL" -gt 0 ]; then
+    print_error "Email '$EMAIL' already exists with different username"
+    exit 1
+else
+    # Add user to Calibre-Web (both username and email are new)
+    sqlite3 "$CALIBRE_DB" "
+    INSERT INTO user (
+        name, email, role, password, kindle_mail, locale, sidebar_view, 
+        default_language, denied_tags, allowed_tags, denied_column_value, 
+        allowed_column_value, view_settings, kobo_only_shelves_sync
+    ) VALUES (
+        '$USERNAME', '$EMAIL', $CALIBRE_ROLE, '$PASSWORD_HASH', '', 'en', 1,
+        'en', '', '', '', '', '{}', 0
+    );"
+    print_status "User created in Calibre-Web database"
+fi
+
+print_status "User creation completed!"
+print_status ""
+print_status "Notes:"
+print_status "- User will authenticate via reverse proxy SSO"
+print_status "- Generated password is not used since SSO authentication is configured"
+print_status "- Regular users have Download and View Books permissions"
+print_status "- Admin users have full administrative permissions"
