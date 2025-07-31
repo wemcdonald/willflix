@@ -444,6 +444,36 @@ services:
     networks:
       - traefik_public
 
+  healthbot:
+    image: ghcr.io/wemcdonald/healthbot:latest
+    container_name: healthbot
+    restart: unless-stopped
+    environment:
+      - PUID=501
+      - PGID=501
+      - TZ=America/Los_Angeles
+      - HEALTHBOT_CONFIG=/config/healthbot
+    volumes:
+      - /docker/appdata/healthbot/config:/config:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - /run/systemd:/run/systemd:ro
+      - /:/host:ro
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3334/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.services.healthbot.loadbalancer.server.port=3334"
+      - "traefik.http.routers.healthbot.rule=Host(`health.willflix.org`)"
+      - "traefik.http.routers.healthbot.entrypoints=websecure"
+      - "traefik.http.routers.healthbot.tls.certresolver=le"
+      - "traefik.http.routers.healthbot.middlewares=authentik-forward@file"
+    networks:
+      - traefik_public
+
   nextcloud:
     image: nextcloud
     restart: always
