@@ -90,8 +90,9 @@ services:
     env_file:
       - secrets/authentik_env
     volumes:
-      - /docker/appdata/media:/media
-      - /docker/appdata/custom-templates:/templates
+      - /docker/appdata/authentik/certs:/certs
+      - /docker/appdata/authentik/media:/media
+      - /docker/appdata/authentik/templates:/templates
     #env_file:
     #  - .env
     ports:
@@ -120,9 +121,9 @@ services:
       - secrets/authentik_env
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
-      - /docker/appdata/certs:/certs
-      - /docker/appdata/media:/media
-      - /docker/appdata/custom-templates:/templates
+      - /docker/appdata/authentik/certs:/certs
+      - /docker/appdata/authentik/media:/media
+      - /docker/appdata/authentik/templates:/templates
     #env_file:
     #  - .env
     depends_on:
@@ -427,8 +428,6 @@ services:
       - /docker/appdata/calibre-web-automated:/config
       - /docker/appdata/calibre-ingest:/cwa-book-ingest
       - /Volumes/Media/Calibre:/calibre-library
-    ports:
-      - 8083:8083
     restart: unless-stopped
     labels:
       - "traefik.enable=true"
@@ -436,7 +435,7 @@ services:
       - "traefik.http.routers.calibre-web.rule=Host(`books.willflix.org`)"
       - "traefik.http.routers.calibre-web.entrypoints=websecure"
       - "traefik.http.routers.calibre-web.tls.certresolver=le"
-      #- "traefik.http.routers.calibre-web.middlewares=authentik-forward@docker"
+      - "traefik.http.routers.calibre-web.middlewares=authentik-forward@file"
     networks:
       - traefik_public
 
@@ -484,15 +483,7 @@ services:
 networks:
   traefik_public:
     name: config_traefik_public
-    driver: bridge
-    ipam:
-      config:
-        - subnet: 172.30.0.0/16
     external: true
   default:
     name: config_default
-    driver: bridge
-    ipam:
-      config:
-        - subnet: 172.29.0.0/16
     external: true
