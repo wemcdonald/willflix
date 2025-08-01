@@ -15,6 +15,8 @@ secrets:
     file: ./secrets/smtp_password
   postgres_password:
     file: ./secrets/postgres_password
+  nextcloud_postgres_password:
+    file: ./secrets/nextcloud_postgres_password
 
 services:
   backup:
@@ -224,7 +226,7 @@ services:
       - /docker/appdata/vnc:/home/will
       - /Volumes/Media:/Volumes/Media
     secrets:
-      - vnc_password
+      - nc_password
     environment:
       - RESOLUTION=1920x1080
       - USER=will
@@ -271,7 +273,7 @@ services:
     #    target: /dev/shm
     #    tmpfs:
     #      size: 134217728 # 128*2^20 bytes = 128Mb
-    user: 129:135
+    # user: 129:135 # 999:999 inside
     ports:
       - 5432:5432
     volumes:
@@ -485,12 +487,24 @@ services:
       - postgres
     volumes:
       - /docker/appdata/nextcloud:/var/www/html
+    secrets:
+      - nextcloud_postgres_password
     environment:
-      - POSTGRES_PASSWORD=nextcloud
+      - POSTGRES_PASSWORD_FILE=/run/secrets/nextcloud_postgres_password
       - POSTGRES_DB=nextcloud
-      - POSTGRES_USER=nextcloud
+      - POSTGRES_USER=nextclouduser
       - POSTGRES_HOST=postgres
       - REDIS_HOST=redis
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.services.nextcloud.loadbalancer.server.port=80"
+      - "traefik.http.routers.nextcloud.rule=Host(`willflix.org`) || Host(`www.willflix.org`)"
+      - "traefik.http.routers.nextcloud.entrypoints=websecure"
+      - "traefik.http.routers.nextcloud.tls.certresolver=le"
+      - "traefik.docker.network=config_traefik_public"
+    networks:
+      - traefik_public
+      - default
 
   plex:
     image: lscr.io/linuxserver/plex:latest
