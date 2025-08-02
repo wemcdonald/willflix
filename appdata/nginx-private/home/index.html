@@ -1,0 +1,203 @@
+<!DOCTYPE html>
+<html lang="en">
+    <head>
+        <meta charset="UTF-8" />
+        <link rel="stylesheet" type="text/css" media="all" href="index.css" />
+    </head>
+    <body>
+        <article class="accordion">
+            <section id="welcome" class="expanded">
+                <h2><a href="#welcome">Welcome to <span class="action-emphasis">Willflix</span></a></h2>
+                <div style="margin: 0 5em;">
+                    <p>Welcome! </p>
+                    <p>To learn more about what I provide and how to use the site, see the help sections ("I want to...") below.</p>
+                    <p>If you already know what you want, jump to it with the navigation bar at the top of the screen. </p>
+                    <p>Here's a summary of what's here. If there's anything you'd like please feel free to ask and I'll do my best to get it.</p>
+                </div>
+                <ul>
+                    <li>
+                        <span class="emphasis">Video</span>
+                        <p class="explanation">Available for streaming or downloading, organized into the following categories. See the <a href="#stream">streaming<a> or <a href="#download">downloading</a> sections below for more details.</p></li>
+                        <li class="indent-1">Movies</li>
+                        <li class="indent-1">Kids Movies</li>
+                        <li class="indent-1">TV</li>
+                        <li class="indent-1">Kids TV</li>
+                        <li class="indent-1">Stand-Up</li>
+                        <!-- <p class="explanation">If you'd like a Movie or TV Show you can add it to <a href="#request">Willflix Requests</a> and, in most cases, it will download automatically. See the <a href="#request">request</a> section below for more details.</p> -->
+                        <li><span class="emphasis">Ebooks</span><p class="explanation">All books are available in Kindle format by default, but they can be automatically converted to read in iBooks if that's your preference. Available to download or send directly to your Kindle from Willflix. See the <a href="#books">read</a> section below.</p></li>
+                        <li><span class="emphasis">Audiobooks</span><p class="explanation">Currently somewhat haphazardly organized, but I'm working on automating that. Currently the best strategy is to download them and load them onto your phone manually, but once they're organized I'll launch the ability to browse, download, and stream right from an Audiobook player on your phone.</p></li>
+                        <li><span class="emphasis">Comics</span><p class="explanation">Just a modest collection. Currently just available to download. See <a href="https://www.howtogeek.com/321394/the-best-comic-book-readers-for-windows-mac-and-linux/">here</a> or <a href="https://www.tomsguide.com/round-up/best-comic-reader-mobile">here</a> for recommended reading apps.</p></li>
+                        <li><span class="emphasis">Software</span><p class="explanation">A variety of Mac & Windows software.</p></li>
+                        <li><span class="emphasis">The Great Courses</span><p class="explanation"><a href="https://www.thegreatcourses.com/">Great university-level courses</a></p></li>
+                        <li><span class="emphasis">MasterClasses</span><p class="explanation"><a href="https://www.masterclass.com/">Interesting topics taught by experts</a></p></li>
+                        <li><span class="emphasis">RPGs</span><p class="explanation">Almost everything available for D&amp;D and Pathfinder RPGs.</p></li>
+                        <ul>
+                        </section>
+                        <section id="stream">
+                            <h2><a href="#stream">I want to <span class="action-emphasis">stream</span> Movies and TV</a></h2>
+                            <ul>
+                                <li>
+                                    <span class="emphasis">Plex</span>
+                                    <p class="explanation">You can stream directly from Willflix using Plex via the <a target="_blank" href="https://app.plex.tv/desktop">plex.tv web player</a> or Plex apps you install on your phone, computer, or TV streaming device. This section walks you through setting up Plex on Willflix and getting started with the web player. If you're going to regularly watch on your computer, however, I recommend installing the <a href="https://www.plex.tv/media-server-downloads/#plex-app">Plex app for Windows or Mac</a>.</p>
+                                </li>
+                                <li>
+                                    <span class="emphasis">Creating Your Account (the first time)</span>
+                                    <p class="explanation">If you're reading this then I've likely sent you an email invite to Plex on Willflix. If not, ask me for it!</p>
+                                    <p class="explanation">Go to <a href="https://plex.tv">plex.tv</a> and sign up for an account.</p>
+                                    <p class="explanation">Once you log in, click on the icon in top-right and then go to <a a target="_blank" href="https://app.plex.tv/desktop#!/settings/users-sharing">Users and Sharing</a>. In the Friends section, click the checkmark next to "Willflix Wants to share with you".</p>
+                                    <p class="explanation"><em>If you don't see an invitation here</em> I have sent it to a different email address. Let me know and I'll fix it!</p>
+                                </li>
+                                <li>
+                                    <span class="emphasis">Configure the player</span>
+                                    <p class="explanation">Note: This section walks you through setting up the plex.tv web player. This isn't the <em>best</em> way to watch, but is the easiest to demonstrate. The configuration process for other Plex apps will be similar. </p>
+
+                                    <!--
+                                    <p class="explanation">Before you try streaming <a a target="_blank" href="https://app.plex.tv/desktop#!/settings/web/quality">configure the web player</a> by setting Video Quality to Maximum like so:
+                                    <br />
+                                    <img src="images/plex-web-quality.png" style="width: 400px;"/>
+                                    </p>
+                                    -->
+                                <p class="explanation">Click <a a target="_blank" href="https://app.plex.tv/desktop#">Home</a> in the top-left, find Willflix under the "More" menu:
+                                <br />
+                                <img src="images/plex-more-menu.png" style="width: 200px;"/>
+                                <br />
+                                then use the 3 dots next to each Willflix library you want to pin it to your "home"
+                                <br />
+                                <img src="images/plex-pin.png" style="width: 200px;"/>
+                                <br />
+                                (and un-pin the default Plex libraries if you desire).
+                                <br />
+                                <img src="images/plex-menu-pinned.png" style="width: 200px;"/>
+                                <br />
+                                Now when you click Home or log in, you'll have access to all of Willflix.
+                                <br />
+                                <img src="images/plex-willflix-home.png" style="width: 200px;"/>
+                            </p>
+                        </li>
+                        <li>
+                            <span class="emphasis">Download other Plex apps</span>
+                            <p class="explanation">Plex has apps for iOS, Android, Mac, Windows, Apple TV, Roku, Amazon Fire, Mac, and just about everything else. Go to their <a href="https://www.plex.tv/media-server-downloads/#plex-app">Downloads</a> page and get the app on your phone, laptop, and TV.</p>
+                            <p class="explanation">Sign into your account on each device and you'll already have access to Willflix.</p>
+                            <p class="explanation">On each device, however, you should change the Quality settings as above (set to Maximum, automatic), and set up the home screen as you wish. See these articles on <a target="_blank" href="https://support.plex.tv/articles/customizing-the-mobile-apps-2/">Customizing your Mobile Apps</a> or <a target="_blank" href="https://support.plex.tv/articles/customizing-the-apps/">Customizing your Big Screen (TV) Apps</a> for more details.</p>
+                        </li>
+                        <li>
+                            <span class="emphasis">Usage tips</span>
+                            <p class="explanation">Change Subtitles and Language by clicking on the Settings icon <img src="images/plex-playback-settings-button.png" style="width: 20px;"/> which will then let you choose subtitles and audio stream.
+                                <br />
+                                <img src="images/plex-playback-settings.png" style="width: 300px;"/>
+                            </p>
+                        </li>
+                    </ul>
+                </section>
+                <section id="download">
+                    <h2><a href="#download">I want to <span class="action-emphasis">download</span> Media</a></h2>
+                    <ul>
+                        <li>
+                            <span class="emphasis">Plex</span>
+                            <p class="explanation">In most cases, streaming is the best choice for Movies and TV.</p>
+                            <p class="explanation">But if you want to take shows with you on a flight, downloading can be the best option. In this case, I highly recommend using the <a href="https://www.videolan.org/vlc/">VLC Media Player</a> as it has by far the best compatibility support.</p>
+                        </li>
+                        <li>
+                            <span class="emphasis">Browsing</span>
+                            <p class="explanation">Use the <a href="/apps/files/"><img src="images/willflix-files.png" style="width: 20px;"/> Files</a> tab of the navigation bar to browse files. . When you've found what you want, right-click and choose Download.<br />
+                        <img src="images/download-menu.png" style="width: 300px;"/>.</p>
+                        <p class="explanation">You can download individual files or whole directories, zipped together. If you want media in bulk let me know and I can make better arrangements.</p>
+                    </li>
+                </ul>
+            </section>
+            <section id="request">
+                <h2><a href="#request">I want to <span class="action-emphasis">request</span> Media</a></h2>
+                <div style="margin: 0 5em;">
+                    <p>
+                        I'm happy to try to accomodate any requests you might have. Not everything is easily available, but let me know what you'd like and I'll do my best to find it
+                    </p>
+                </div>
+                <!--
+                <ul>
+                    <li>
+                        <span class="emphasis">Automated TV & Movie Requests</span>
+                        <p class="explanation">The <a href="https://willflix.org/apps/external/3"><img src="images/request-dark.svg" style="width: 20px;"/> Requests</a> tab of the navigation bar lets you request TV & Movies. If they're available, they'll automatically download and be available on Willflix.</p>
+                        <p class="explanation"><img src="images/request-sign-in.png" style="height: 20px"/> Click the Sign In with Plex button to open a new window and sign in. If you're not already signed into Plex, enter your <em>Plex</em> username and password. You can close this window when you're signed in.</p>
+                        <p class="explanation"><img src="images/request-requests.png" style="height: 20px"/>    The Requests sub-tab is where you can see all the pending requests. If a thing is available it will normally download and be available in Plex withing minutes. <em>However</em> the Requests page only scans for updates <span class="bold">once an hour</span>, so even if a request is still listed here it's worth checking in Plex.
+                    </p>
+                    <p class="explanation">
+                        You can request Movies and TV shows that aren't yet available (online), and they'll automatically download when they become available.
+                    </p>
+                    <p class="explanation">
+                        If a request is pending here and in Plex for more than a day or so, please contact me and I'll do my best to track it down.
+                    </p>
+                </li>
+            </ul>
+            -->
+        </section>
+        <section id="books">
+            <h2><a href="#books">I want to <span class="action-emphasis">read</span> books on my Kindle</a></h2>
+            <ul>
+                <li>
+                    <span class="emphasis">Reading Ebooks</span>
+                    <p class="explanation">The <a href="/apps/external/2"><img src="images/book-dark.svg" style="width: 20px;"/> Books</a> tab of the navigation bar lets you browse ebooks, download them, and send them directly to your Kindle if you've configured things correctly.</p>
+                </li>
+
+                <li>
+                    <span class="emphasis">Signing in</span>
+                    <p class="explanation">At this time the Books section of Willflix.org requires a <span class="bold">separate account</span> from the main site. If you want access to ebooks, you'll need to contact me and ask me to create an account for you. I hope to automate this process soon!</p>
+                </li>
+
+                <li>
+                    <span class="emphasis">Browsing books</span>
+                    <p class="explanation">Searching for books bu title and author is should be straight-forward.</p>
+                    <p class="explanation">In addition, note that book can be organized into Series – useful if you want to read books in order.</p>
+                    <p class="explanation">You can also create your own Shelves to keep track of books you want to read (or anythings else).</p>
+                </li>
+
+                <li>
+                    <span class="emphasis">Downloading</span>
+                    <p class="explanation">When you've found a book you'd like to download, click the download button in the top-right and select the ebook format you'd like.
+                        <br />
+                                <img src="images/books-formats.png" style="width: 100px;"/>
+                    </p>
+
+                    <p class="explanation">In almost all cases you want to download <em>EPUB</em> format which works with Kindles and iBooks.</p>
+                </li>
+
+                <li>
+                    <span class="emphasis">Sending directly to your kindle</span>
+
+                    <p class="explanation">
+                        <span class="bold">(Once)</span>Configure your Amazon account to receive books from Willflix Books:
+                        <ol>
+                            <li>Visit <a href="https://www.amazon.com/myk#manageDevices">Manage Your Content and Devices</a> page.</li>
+                            <li>Sign-in to Amazon account.</li>
+                            <li>Click on "Preferences".</li>
+                            <li>Click on "Personal Document Settings".</li>
+                            <li>Under "Send-to-Kindle E-Mail Settings", <span class="bold">write down the email address</span> associated with the Kindle you'd like to read on (you can change this email address if you want). NOTE: If your kindle email address doesn't have capital, lowercase, and numbers in it, or if it contains the username part of your email address, Amazon will require you to click a link in your personal email in order to allow the book to be sent to your kindle. This is a pain so choose a kindle email address that meets these rules</li>
+                            <li>Enable "Personal Document Archiving"</li>
+                            <li>Under "Approved Personal Document E-mail List", add <em>books@willflix.org</em></li>
+                        </ol>
+                    </p>
+
+                    <p class="explanation">
+                        <span class="bold">(Once)</span>Configure Willflix Books to send to your Kindle:
+                        <ol>
+                            <li>Click on the <img src="images/books-account-menu.png" style="width: 30px;"/> Account menu in the top-right</li>
+                            <li>Click on your usename</li>
+                            <li>Enter your Kindle email address (that you wrote down above)</li>
+                            <li>Click submit</li>
+                        </ol>
+                    </p>
+
+                    <p class="explanation">
+                        Now, whenever you find a book you like, just click the paper airplane in the top-right and click "Send To Kindle"
+                        <br/>
+                        <img src="images/books-send-to-kindle.png" style="width: 100px;"/>
+                    </p>
+                    <p class="explanation">
+                        If your book doesn't show up in a few minutes, check your email – Amazon may ask you to click a link confirming that the book should be sent.
+                    </p>
+
+                </li>
+            </ul>
+        </section>
+    </article>
+</body>
+</html>
