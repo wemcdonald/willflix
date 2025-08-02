@@ -42,7 +42,18 @@
       "Bash(/usr/bin/docker compose -f /docker/config/docker-compose.yml up -d nginx-public nginx-private)",
       "Bash(sudo ln:*)",
       "Bash(sudo:*)",
-      "Bash(/usr/bin/docker compose -f /docker/config/docker-compose.yml up -d nginx-public)"
+      "Bash(/usr/bin/docker compose -f /docker/config/docker-compose.yml up -d nginx-public)",
+      "Bash(/usr/bin/docker ps --format \"table {{.Names}}\\t{{.Image}}\\t{{.Ports}}\")",
+      "Bash(/usr/bin/docker exec nginx-private ls -la /etc/nginx/)",
+      "Bash(/usr/bin/docker exec:*)",
+      "Bash(/usr/bin/docker compose -f webhook-service.yml up -d)",
+      "Bash(/usr/bin/docker compose -f /docker/config/webhook-service.yml up -d)",
+      "Bash(/usr/bin/docker logs webhook-handler)",
+      "Bash(/usr/bin/docker cp /docker/config/nginx-webhook.conf nginx-private:/etc/nginx/conf.d/)",
+      "Bash(/usr/bin/docker inspect nginx-private)",
+      "Bash(/usr/bin/docker compose -f /docker/config/webhook-service.yml down)",
+      "Bash(/usr/bin/docker logs webhook-handler --tail 10)",
+      "Bash(/usr/bin/docker inspect webhook-handler)"
     ],
     "deny": []
   }

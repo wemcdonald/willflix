@@ -22,7 +22,13 @@ fi
 
 # Source environment variables
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-ENV_FILE="$SCRIPT_DIR/../config/secrets/plex_api_env"
+
+# Check if running in webhook container
+if [ -f "/app/secrets/plex_api_env" ]; then
+    ENV_FILE="/app/secrets/plex_api_env"
+else
+    ENV_FILE="$SCRIPT_DIR/../config/secrets/plex_api_env"
+fi
 
 if [ ! -f "$ENV_FILE" ]; then
     echo "Error: Environment file not found at $ENV_FILE"

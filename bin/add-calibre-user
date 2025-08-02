@@ -7,7 +7,12 @@
 set -e
 
 # Load configuration
-source /docker/config/secrets/authentik_api_env
+# Check if running in webhook container
+if [ -f "/app/secrets/authentik_api_env" ]; then
+    source /app/secrets/authentik_api_env
+else
+    source /docker/config/secrets/authentik_api_env
+fi
 
 # Check required environment variables
 if [ -z "$CALIBRE_USER_ROLE" ] || [ -z "$CALIBRE_ADMIN_ROLE" ]; then

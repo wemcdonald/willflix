@@ -133,6 +133,14 @@ print_status "Creating user in Calibre-Web..."
 
 if /docker/bin/add-calibre-user "$USERNAME" "$EMAIL" "$ROLE"; then
     print_status "✓ User created in Calibre-Web"
+    
+    # Invite user to Plex
+    print_status "Inviting user to Plex..."
+    if /docker/bin/invite-to-plex "$EMAIL"; then
+        print_status "✓ Plex invitation sent to: $EMAIL"
+    else
+        print_warning "✗ Failed to invite to Plex: $EMAIL"
+    fi
 else
     print_error "Failed to create user in Calibre-Web"
     
