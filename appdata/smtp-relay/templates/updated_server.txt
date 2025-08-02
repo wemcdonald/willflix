@@ -2,9 +2,17 @@ Subject: Willflix update
 
 Hello valued automated-email recipient!
 
-The entire 
+As part of our ongoing commitment to provide you as much value as possible for every one of your subscription dollars, Willflix has been made slightly more secure and convenient in a way that you may not care about.
 
-If you have any questions, please don't hesitate to reach out.
+First, Plex:
+Nothing is changing here, continue to stream as normal. If you signed up for Plex with a different email address than you used for willflix.org, you may get an additional invite at your willfix email address. Feel free to ignore it.
+
+Books, Audiobooks, and main website:
+All of these have sites have a new login process, and your old username & password have been reset. You can either log in directly with your gmail ({{email}}), or select "Forgot username or password" and enter your username ({{username}}) to set a new password. Once you log in you'll have access to all three sites. Let me know if you want to use a different gmail address.
+
+In addition, there's a new Audibooks interface that you can listen directly from, as well as a recommended iOS app that you can stream from, download, etc (see the main website for details).
+
+As always email or text me with any questions or requets.
 
 Best regards,
-The Willflix Team
+The Willflix Egineering and Beach Vollyball Team
