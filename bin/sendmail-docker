@@ -34,7 +34,7 @@ if [ ${#RECIPIENTS[@]} -eq 0 ]; then
 fi
 
 # Extract subject from email content
-SUBJECT=$(echo "$EMAIL_CONTENT" | grep -i "^Subject:" | head -1 | cut -d: :q-f2- | sed 's/^ *//')
+SUBJECT=$(echo "$EMAIL_CONTENT" | grep -i "^Subject:" | head -1 | cut -d: -f2- | sed 's/^ *//')
 if [ -z "$SUBJECT" ]; then
     SUBJECT="Message from $(hostname)"
 fi
