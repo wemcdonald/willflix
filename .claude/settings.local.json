@@ -35,7 +35,14 @@
       "Bash(/usr/bin/docker inspect healthbot)",
       "Bash(/usr/bin/docker exec traefik wget -q -O - http://healthbot:3334/)",
       "Bash(nslookup:*)",
-      "Bash(/usr/bin/docker logs 6ff00da136a9_config-traefik-1 --tail 20)"
+      "Bash(/usr/bin/docker logs 6ff00da136a9_config-traefik-1 --tail 20)",
+      "WebFetch(domain:docs.goauthentik.io)",
+      "WebFetch(domain:integrations.goauthentik.io)",
+      "WebFetch(domain:blog.cubieserver.de)",
+      "Bash(/usr/bin/docker compose -f /docker/config/docker-compose.yml up -d nginx-public nginx-private)",
+      "Bash(sudo ln:*)",
+      "Bash(sudo:*)",
+      "Bash(/usr/bin/docker compose -f /docker/config/docker-compose.yml up -d nginx-public)"
     ],
     "deny": []
   }

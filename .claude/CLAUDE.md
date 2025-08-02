@@ -234,3 +234,119 @@ Custom utilities beyond the user management scripts:
 - **Compose Files**: Main orchestration in `docker-compose.yml`
 - **Secrets**: Encrypted with git-crypt in `config/secrets/`
 - **Middleware**: Traefik middleware definitions in separate YAML files
+
+---
+
+# Nextcloud SSO Configuration with authentik
+
+## Overview
+
+This project implements Nextcloud as the main website (willflix.org) with Single Sign-On (SSO) authentication via authentik OIDC provider.
+
+## Goals
+
+1. **Primary Domain Access**: Nextcloud accessible at https://willflix.org and https://www.willflix.org
+2. **Automatic SSO Redirect**: Users automatically redirected to authentik login (no password/device login options)
+3. **Seamless Authentication**: No consent screen after successful authentik login
+4. **User Management**: Centralized user management through authentik with automatic Nextcloud account provisioning
+
+## Current Configuration
+
+### Infrastructure
+- **Nextcloud**: Latest container with PostgreSQL backend
+- **authentik**: 2025.6.4 with dedicated PostgreSQL database
+- **Traefik**: v2.10 reverse proxy with Let's Encrypt SSL certificates
+- **Networks**: 
+  - `traefik_public`: For external access via Traefik
+  - `default`: For internal service communication (PostgreSQL, Redis)
+
+### Domain Configuration
+- **Nextcloud**: https://willflix.org, https://www.willflix.org
+- **authentik**: https://auth.willflix.org
+- **SSL**: Automatic Let's Encrypt certificates via Traefik
+
+### Database Setup
+- **Nextcloud DB**: `nextcloud` database with `nextclouduser` on shared PostgreSQL instance
+- **authentik DB**: Uses default `will` database on same PostgreSQL instance
+
+## SSO Implementation Progress
+
+### ✅ Completed
+1. **Nextcloud Installation**: Successfully deployed and accessible at willflix.org
+2. **OIDC App Installation**: `user_oidc` v7.3.0 installed and enabled
+3. **authentik Provider Configuration**: OAuth2/OIDC provider created with:
+   - Client ID: `NFwZHDQ4VtTIxb0gNI2lZMkWwJIdUSEfSHcQW4Ks`
+   - Client Secret: 64-character trimmed secret (authentik limitation)
+   - Redirect URI: `https://willflix.org/apps/user_oidc/code`
+4. **Nextcloud OIDC Configuration**: Provider configured with proper discovery endpoint
+5. **Automatic Redirect**: Successfully configured (`allow_multiple_user_backends = 0`)
+
+### 🔧 Current Issues
+
+#### Issue 1: Discovery Endpoint Intermittent 404s
+- **Problem**: `https://auth.willflix.org/application/o/nextcloud/.well-known/openid_configuration` returns 404
+- **Cause**: authentik provider configuration becomes corrupted/disconnected after configuration changes  
+- **Symptoms**: Nextcloud shows "Could not reach the OpenID Connect provider"
+- **Temporary Fix**: Edit provider in authentik and re-save (forces route re-registration)
+
+#### Issue 2: Persistent Consent Screen
+- **Problem**: Users see consent screen asking for "Email address" and "General Profile Information" permissions
+- **Investigation**: Nextcloud sends `prompt=consent` in authorization request, overriding authentik implicit consent settings
+- **Attempted Solutions**:
+  - Set Authorization flow to `default-provider-authorization-implicit-consent` ✗
+  - Changed to `default-authentication-flow` ✗
+  - Added `extraClaims="prompt=none"` in Nextcloud (caused provider connection issues) ✗
+  - Multiple authentik service restarts ✗
+
+### 🔍 Troubleshooting Attempts
+
+1. **Provider Recreation**: Deleted and recreated authentik OAuth2 provider with proper settings
+2. **Network Validation**: Confirmed discovery endpoint returns valid JSON when working
+3. **Configuration Validation**: Verified all provider settings match documentation requirements
+4. **Log Analysis**: authentik logs show successful provider creation but 404s on endpoint access
+5. **Service Restarts**: Multiple authentik service restarts to clear cached configurations
+
+### 📋 Next Steps
+
+1. **Resolve Discovery Endpoint Stability**: Need to identify root cause of provider route disconnection
+2. **Eliminate Consent Screen**: Either modify Nextcloud OIDC app behavior or create custom authentik authorization flow
+3. **Test Complete Flow**: Verify end-to-end authentication once technical issues resolved
+
+## Configuration Details
+
+### Nextcloud OIDC Provider Settings
+```yaml
+Provider ID: 1
+Identifier: authentik  
+Client ID: NFwZHDQ4VtTIxb0gNI2lZMkWwJIdUSEfSHcQW4Ks
+Discovery URI: https://auth.willflix.org/application/o/nextcloud/.well-known/openid_configuration
+Scope: openid email profile
+Mappings:
+  - Display Name: name
+  - Email: email  
+  - UID: preferred_username
+Unique UID: false
+Allow Multiple Backends: false (forces SSO redirect)
+```
+
+### authentik Provider Settings
+```yaml
+Name: nextcloud-oidc
+Client Type: Confidential
+Authorization Flow: default-provider-authorization-implicit-consent
+Redirect URIs: https://willflix.org/apps/user_oidc/code
+Subject Mode: Based on the User's username
+Include Claims in ID Token: enabled
+```
+
+## Known Issues & Workarounds
+
+1. **authentik Provider Routes**: Provider configuration can become corrupted requiring manual re-save
+2. **64-Character Secret Limit**: Nextcloud OIDC app has bug limiting client secrets to 64 characters
+3. **Consent Override**: Nextcloud OIDC app sends `prompt=consent` parameter overriding provider settings
+
+## References
+
+- [authentik Nextcloud Integration Guide](https://docs.goauthentik.io/integrations/services/nextcloud/)
+- [Nextcloud OIDC Documentation](https://github.com/nextcloud/user_oidc)
+- [Blog: Complete Nextcloud OIDC with authentik](https://blog.cubieserver.de/2022/complete-guide-to-nextcloud-oidc-authentication-with-authentik/)

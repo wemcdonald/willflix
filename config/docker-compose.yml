@@ -487,6 +487,7 @@ services:
       - postgres
     volumes:
       - /docker/appdata/nextcloud:/var/www/html
+      - /Volumes/Media:/Volumes/Media
     secrets:
       - nextcloud_postgres_password
     environment:
@@ -505,6 +506,37 @@ services:
     networks:
       - traefik_public
       - default
+
+  nginx-public:
+    image: nginx:alpine
+    container_name: nginx-public
+    volumes:
+      - /docker/appdata/nginx-public:/usr/share/nginx/html:ro
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.services.nginx-public.loadbalancer.server.port=80"
+      - "traefik.http.routers.nginx-public.rule=Host(`public.willflix.org`)"
+      - "traefik.http.routers.nginx-public.entrypoints=websecure"
+      - "traefik.http.routers.nginx-public.tls.certresolver=le"
+      - "traefik.docker.network=config_traefik_public"
+    networks:
+      - traefik_public
+
+  nginx-private:
+    image: nginx:alpine  
+    container_name: nginx-private
+    volumes:
+      - /docker/appdata/nginx-private:/usr/share/nginx/html:ro
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.services.nginx-private.loadbalancer.server.port=80"
+      - "traefik.http.routers.nginx-private.rule=Host(`private.willflix.org`)"
+      - "traefik.http.routers.nginx-private.entrypoints=websecure"
+      - "traefik.http.routers.nginx-private.tls.certresolver=le"
+      - "traefik.http.routers.nginx-private.middlewares=authentik-forward@file"
+      - "traefik.docker.network=config_traefik_public"
+    networks:
+      - traefik_public
 
   plex:
     image: lscr.io/linuxserver/plex:latest
