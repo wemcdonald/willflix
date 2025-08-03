@@ -1,0 +1,15 @@
+[Unit]
+Description=Authentik Worker
+Requires=docker.service
+After=docker.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=true
+WorkingDirectory=/docker/config
+ExecStart=/usr/bin/docker compose up -d authentik-worker
+ExecStop=/usr/bin/docker compose stop authentik-worker
+TimeoutStartSec=0
+
+[Install]
+WantedBy=multi-user.target

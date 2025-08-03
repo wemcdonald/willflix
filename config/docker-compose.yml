@@ -591,11 +591,21 @@ services:
       - /var/run/docker.sock:/var/run/docker.sock:ro
       - /docker/appdata/ofelia/logs:/tmp/logs
     command: daemon --docker
+    networks:
+      - traefik_public
+      - default
     labels:
+      - "ofelia.smtp-host=smtp-relay"
+      - "ofelia.smtp-port=25"
+      - "ofelia.email-from=wemcdonald@gmail.com"
+      - "ofelia.email-to=wemcdonald@gmail.com"
+      - "ofelia.mail-only-on-error=true"
+      - "ofelia.save-folder=/tmp/logs"
+      - "ofelia.save-only-on-error=false"
+
       # Restart Plex at 4 AM daily
-      - "ofelia.job-run.restart-plex.schedule=0 4 * * *"
-      - "ofelia.job-run.restart-plex.container=ofelia" 
-      - "ofelia.job-run.restart-plex.command=sh -c 'apk add --no-cache docker-cli && docker restart plex'"
+      - "ofelia.job-local.restart-plex.schedule=0 4 * * *"
+      - "ofelia.job-local.restart-plex.command=sh -c 'apk add --no-cache docker-cli && docker restart plex'"
 
 networks:
   traefik_public:
