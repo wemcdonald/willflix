@@ -59,3 +59,4 @@ authentik/certs/
 nginx-*/logs/
 nginx-*/log/
 smtp-relay/logs/
+ofelia/logs/

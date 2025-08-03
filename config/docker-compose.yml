@@ -589,8 +589,18 @@ services:
     restart: unless-stopped
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
       - /docker/appdata/ofelia/logs:/tmp/logs
-    command: daemon --docker
+      - /docker/bin:/scripts:ro
+      - /Volumes/Media:/Volumes/Media
+    environment:
+      - TZ=America/Los_Angeles
+    entrypoint: >
+      sh -c "
+        apk add --no-cache bash docker-cli &&
+        ofelia daemon --docker
+      "
     networks:
       - traefik_public
       - default
@@ -603,9 +613,15 @@ services:
       - "ofelia.save-folder=/tmp/logs"
       - "ofelia.save-only-on-error=false"
 
-      # Restart Plex at 4 AM daily
+      # === DOCKER CONTAINER MANAGEMENT ===
+      # Restart Plex at 4 AM daily (for updates)
       - "ofelia.job-local.restart-plex.schedule=0 4 * * *"
-      - "ofelia.job-local.restart-plex.command=sh -c 'apk add --no-cache docker-cli && docker restart plex'"
+      - "ofelia.job-local.restart-plex.command=docker restart plex"
+      
+      # === MEDIA MANAGEMENT ===  
+      # Normalize media permissions - every 10 minutes
+      #- "ofelia.job-local.normalize-permissions.schedule=*/10 * * * *"
+      #- "ofelia.job-local.normalize-permissions.command=bash /scripts/normalize_media_permissions"
 
 networks:
   traefik_public:
