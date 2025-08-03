@@ -134,6 +134,14 @@ print_status "Creating user in Calibre-Web..."
 if /docker/bin/add-calibre-user "$USERNAME" "$EMAIL" "$ROLE"; then
     print_status "✓ User created in Calibre-Web"
     
+    # Create user in Nextcloud
+    print_status "Creating user in Nextcloud..."
+    if /docker/bin/add-nextcloud-user "$USERNAME" "$EMAIL" "$DISPLAY_NAME"; then
+        print_status "✓ User created in Nextcloud"
+    else
+        print_warning "✗ Failed to create user in Nextcloud - user can still login via SSO"
+    fi
+    
     # Invite user to Plex
     print_status "Inviting user to Plex..."
     if /docker/bin/invite-to-plex "$EMAIL"; then

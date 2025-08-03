@@ -94,7 +94,16 @@ sync_single_user() {
     
     # Call add-calibre-user script
     if "$ADD_CALIBRE_SCRIPT" "$username" "$email" "user" > /dev/null 2>&1; then
-        print_status "✓ Successfully synced: $username"
+        print_status "✓ Successfully synced to Calibre-Web: $username"
+        
+        # Add user to Nextcloud
+        print_status "Adding $username to Nextcloud..."
+        if "$SCRIPT_DIR/add-nextcloud-user" "$username" "$email" > /dev/null 2>&1; then
+            print_status "✓ Successfully synced to Nextcloud: $username"
+        else
+            print_warning "✗ Failed to sync to Nextcloud: $username"
+        fi
+        
         SYNCED_USERS=$((SYNCED_USERS + 1))
         
         # Invite user to Plex
