@@ -249,6 +249,9 @@ services:
     restart: unless-stopped
     volumes:
       - /docker/appdata/smtp-relay/logs:/var/log
+    networks:
+      - traefik_public
+      - default
 
   redis:
     image: redis:latest
