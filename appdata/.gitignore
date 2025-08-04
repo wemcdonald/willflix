@@ -19,6 +19,8 @@ sonarr/
 vnc/
 nzbget/
 letsencrypt/
+prowlarr/
+lidarr/
 
 # =============================================================================
 # INCLUDE THESE DIRECTORIES ENTIRELY
