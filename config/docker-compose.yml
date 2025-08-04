@@ -583,6 +583,17 @@ services:
     expose:
       - "8080"
 
+  ddclient:
+    image: lscr.io/linuxserver/ddclient:latest
+    container_name: ddclient
+    restart: unless-stopped
+    environment:
+      - PUID=501
+      - PGID=501
+      - TZ=America/Los_Angeles
+    volumes:
+      - /docker/appdata/ddclient:/config
+
   samba:
     image: crazymax/samba:latest
     container_name: samba

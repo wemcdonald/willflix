@@ -1,0 +1,21 @@
+[Unit]
+Description=Docker DDClient Dynamic DNS Updater
+Documentation=https://github.com/ddclient/ddclient
+Requires=docker.service
+After=docker.service
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+WorkingDirectory=/docker/config
+ExecStartPre=/usr/bin/docker compose -f docker-compose.yml pull ddclient
+ExecStart=/usr/bin/docker compose -f docker-compose.yml up -d ddclient
+ExecStop=/usr/bin/docker compose -f docker-compose.yml stop ddclient
+ExecReload=/usr/bin/docker compose -f docker-compose.yml restart ddclient
+TimeoutStartSec=300
+TimeoutStopSec=120
+
+[Install]
+WantedBy=multi-user.target

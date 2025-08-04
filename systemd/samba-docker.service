@@ -1,0 +1,21 @@
+[Unit]
+Description=Docker Samba Server
+Documentation=https://github.com/crazy-max/docker-samba
+Requires=docker.service
+After=docker.service
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+WorkingDirectory=/docker/config
+ExecStartPre=/usr/bin/docker compose -f docker-compose.yml pull samba
+ExecStart=/usr/bin/docker compose -f docker-compose.yml up -d samba
+ExecStop=/usr/bin/docker compose -f docker-compose.yml stop samba
+ExecReload=/usr/bin/docker compose -f docker-compose.yml restart samba
+TimeoutStartSec=300
+TimeoutStopSec=120
+
+[Install]
+WantedBy=multi-user.target
