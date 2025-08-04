@@ -583,6 +583,27 @@ services:
     expose:
       - "8080"
 
+  samba:
+    image: crazymax/samba:latest
+    container_name: samba
+    restart: unless-stopped
+    ports:
+      - "139:139"
+      - "445:445"
+    environment:
+      - TZ=America/Los_Angeles
+      - SAMBA_LOG_LEVEL=1
+    volumes:
+      - /Volumes/Media:/data/Media
+      - /docker/appdata/samba:/etc/samba
+      - /docker/appdata/samba/init-users.sh:/usr/local/bin/init-users.sh:ro
+      - samba_config:/data/config
+    command: >
+      sh -c "
+        /usr/local/bin/init-users.sh &&
+        exec /init
+      "
+
   ofelia:
     image: mcuadros/ofelia:latest  
     container_name: ofelia
@@ -622,6 +643,9 @@ services:
       # Normalize media permissions - every 10 minutes
       #- "ofelia.job-local.normalize-permissions.schedule=*/10 * * * *"
       #- "ofelia.job-local.normalize-permissions.command=bash /scripts/normalize_media_permissions"
+
+volumes:
+  samba_config:
 
 networks:
   traefik_public:
