@@ -386,6 +386,29 @@ services:
     networks:
       - traefik_public
 
+  lazylibrarian:
+    image: lscr.io/linuxserver/lazylibrarian:latest
+    container_name: lazylibrarian
+    environment:
+      - PUID=122
+      - PGID=129
+      - TZ=America/Los_Angeles
+    volumes:
+      - /docker/appdata/lazylibrarian:/config
+      - /Volumes/Media:/Volumes/Media
+    ports:
+      - 5299:5299
+    restart: unless-stopped
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.lazylibrarian.rule=Host(`librarian.willflix.org`)"
+      - "traefik.http.routers.lazylibrarian.entrypoints=websecure"
+      - "traefik.http.routers.lazylibrarian.tls.certresolver=le"
+      - "traefik.http.routers.lazylibrarian.middlewares=authentik-forward@file"
+      - "traefik.http.services.lazylibrarian.loadbalancer.server.port=5299"
+    networks:
+      - traefik_public
+
   nzbget:
     image: lscr.io/linuxserver/nzbget:latest
     container_name: nzbget

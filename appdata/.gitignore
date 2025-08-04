@@ -21,6 +21,8 @@ nzbget/
 letsencrypt/
 prowlarr/
 lidarr/
+lazylibrarian/
+homarr/
 
 # =============================================================================
 # INCLUDE THESE DIRECTORIES ENTIRELY
