@@ -593,16 +593,17 @@ services:
     environment:
       - TZ=America/Los_Angeles
       - SAMBA_LOG_LEVEL=1
+      - SAMBA_HOSTS_ALLOW=127.0.0.0/8 10.0.0.0/8 172.16.0.0/12 192.168.0.0/16 100.0.0.0/8
+      - SHARE1_NAME=Media
+      - SHARE1_PATH=/data/Media
+      - SHARE1_RW=true
+      - SHARE1_GUEST=false
+      - SHARE1_USERS=will
     volumes:
       - /Volumes/Media:/data/Media
       - /docker/appdata/samba:/etc/samba
-      - /docker/appdata/samba/init-users.sh:/usr/local/bin/init-users.sh:ro
+      - /docker/appdata/samba/init-users.sh:/etc/cont-init.d/99-init-users.sh:ro
       - samba_config:/data/config
-    command: >
-      sh -c "
-        /usr/local/bin/init-users.sh &&
-        exec /init
-      "
 
   ofelia:
     image: mcuadros/ofelia:latest  
