@@ -107,7 +107,7 @@ else
         default_language, denied_tags, allowed_tags, denied_column_value, 
         allowed_column_value, view_settings, kobo_only_shelves_sync
     ) VALUES (
-        '$USERNAME', '$EMAIL', $CALIBRE_ROLE, '$PASSWORD_HASH', '', 'en', 1,
+        '$USERNAME', '$EMAIL', $CALIBRE_ROLE, '$PASSWORD_HASH', '', 'en', 262143,
         'en', '', '', '', '', '{}', 0
     );"
     print_status "User created in Calibre-Web database"
