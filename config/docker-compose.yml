@@ -17,6 +17,8 @@ secrets:
     file: ./secrets/postgres_password
   nextcloud_postgres_password:
     file: ./secrets/nextcloud_postgres_password
+  homarr_encryption_key:
+    file: ./secrets/homarr_encryption_key
 
 services:
   backup:
@@ -226,7 +228,7 @@ services:
       - /docker/appdata/vnc:/home/will
       - /Volumes/Media:/Volumes/Media
     secrets:
-      - nc_password
+      - vnc_password
     environment:
       - RESOLUTION=1920x1080
       - USER=will
@@ -409,6 +411,34 @@ services:
     networks:
       - traefik_public
 
+  homarr:
+    image: ghcr.io/homarr-labs/homarr:latest
+    container_name: homarr
+    environment:
+      - PUID=122
+      - PGID=998
+      - TZ=America/Los_Angeles
+    env_file:
+      - /docker/config/secrets/homarr_env
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - /docker/appdata/homarr/configs:/app/data/configs
+      - /docker/appdata/homarr/icons:/app/public/icons
+      - /docker/appdata/homarr/data:/data
+      - /docker/appdata/homarr/data:/appdata
+    ports:
+      - 7575:7575
+    restart: unless-stopped
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.homarr.rule=Host(`admin.willflix.org`)"
+      - "traefik.http.routers.homarr.entrypoints=websecure"
+      - "traefik.http.routers.homarr.tls.certresolver=le"
+      - "traefik.http.routers.homarr.middlewares=authentik-forward@file"
+      - "traefik.http.services.homarr.loadbalancer.server.port=7575"
+    networks:
+      - traefik_public
+
   nzbget:
     image: lscr.io/linuxserver/nzbget:latest
     container_name: nzbget
@@ -514,6 +544,73 @@ services:
       - "traefik.http.routers.calibre-web.entrypoints=websecure"
       - "traefik.http.routers.calibre-web.tls.certresolver=le"
       - "traefik.http.routers.calibre-web.middlewares=authentik-forward@file"
+    networks:
+      - traefik_public
+
+  bypassarr:
+    image: ghcr.io/thephaseless/byparr:latest
+    container_name: bypassarr
+    environment:
+      - USE_HEADLESS=false
+      - TZ=America/Los_Angeles
+      - DISPLAY=:99
+      - XVFB_DISPLAY=:99
+      - XVFB_RES=1920x1080x24
+    ports:
+      - 8191:8191
+    restart: unless-stopped
+    shm_size: 2gb
+    cap_add:
+      - SYS_ADMIN
+    security_opt:
+      - seccomp=unconfined
+    command: >
+      sh -c "
+        apt-get update && apt-get install -y xvfb x11-utils &&
+        Xvfb :99 -screen 0 1920x1080x24 -ac +extension GLX +render -noreset &
+        sleep 2 &&
+        python3 main.py
+      "
+    networks:
+      - traefik_public
+      - default
+
+  calibre-web-book-downloader:
+    build:
+      context: /home/will/code/calibre-web-automated-book-downloader
+      dockerfile: Dockerfile
+      target: cwa-bd
+    image: local-calibre-book-downloader:latest
+    container_name: calibre-web-book-downloader
+    environment:
+      - FLASK_PORT=8084
+      - LOG_LEVEL=info
+      - BOOK_LANGUAGE=en
+      - USE_BOOK_TITLE=true
+      - TZ=America/Los_Angeles
+      - APP_ENV=prod
+      - UID=501
+      - GID=501
+      - USE_CF_BYPASS=true
+      - BYPASSARR_URL=http://bypassarr:8191
+      - BYPASSARR_PATH=/v1
+      - BYPASSARR_TIMEOUT=60000
+      # - CWA_DB_PATH=/auth/app.db
+    depends_on:
+      - bypassarr
+    volumes:
+      - /docker/appdata/calibre-ingest:/cwa-book-ingest
+      # - /docker/appdata/calibre-web-automated/app.db:/auth/app.db:ro
+    ports:
+      - 8084:8084
+    restart: unless-stopped
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.services.calibre-web-book-downloader.loadbalancer.server.port=8084"
+      - "traefik.http.routers.calibre-web-book-downloader.rule=Host(`bookstore.willflix.org`)"
+      - "traefik.http.routers.calibre-web-book-downloader.entrypoints=websecure"
+      - "traefik.http.routers.calibre-web-book-downloader.tls.certresolver=le"
+      - "traefik.http.routers.calibre-web-book-downloader.middlewares=authentik-forward@file"
     networks:
       - traefik_public
 
