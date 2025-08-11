@@ -547,9 +547,9 @@ services:
     networks:
       - traefik_public
 
-  bypassarr:
+  byparr:
     image: ghcr.io/thephaseless/byparr:latest
-    container_name: bypassarr
+    container_name: byparr
     environment:
       - USE_HEADLESS=false
       - TZ=America/Los_Angeles
@@ -576,11 +576,11 @@ services:
       - default
 
   calibre-web-book-downloader:
-    build:
-      context: /home/will/code/calibre-web-automated-book-downloader
-      dockerfile: Dockerfile
-      target: cwa-bd
-    image: local-calibre-book-downloader:latest
+    # build:
+    #   context: /home/will/code/calibre-web-automated-book-downloader
+    #   dockerfile: Dockerfile
+    #   target: cwa-bd
+    image: wemcdonald/calibre-web-automated-book-downloader:latest
     container_name: calibre-web-book-downloader
     environment:
       - FLASK_PORT=8084
@@ -591,13 +591,15 @@ services:
       - APP_ENV=prod
       - UID=501
       - GID=501
+      - USING_TOR=false
       - USE_CF_BYPASS=true
-      - BYPASSARR_URL=http://bypassarr:8191
-      - BYPASSARR_PATH=/v1
-      - BYPASSARR_TIMEOUT=60000
+      - BYPASS_METHOD=byparr
+      - BYPARR_URL=http://byparr:8191
+      - BYPARR_PATH=/v1
+      - BYPARR_TIMEOUT=60000
       # - CWA_DB_PATH=/auth/app.db
     depends_on:
-      - bypassarr
+      - byparr
     volumes:
       - /docker/appdata/calibre-ingest:/cwa-book-ingest
       # - /docker/appdata/calibre-web-automated/app.db:/auth/app.db:ro
