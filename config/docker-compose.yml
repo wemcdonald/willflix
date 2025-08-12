@@ -19,6 +19,8 @@ secrets:
     file: ./secrets/nextcloud_postgres_password
   homarr_encryption_key:
     file: ./secrets/homarr_encryption_key
+  grocerybot_openai_key:
+    file: ./secrets/grocerybot_openai_key
 
 services:
   backup:
@@ -760,6 +762,36 @@ services:
       - TZ=America/Los_Angeles
     volumes:
       - /docker/appdata/ddclient:/config
+
+  grocerybot:
+    build:
+      context: /home/will/code/grocery-bot
+      dockerfile: Dockerfile
+    container_name: grocerybot
+    restart: unless-stopped
+    secrets:
+      - grocerybot_openai_key
+    environment:
+      - PUID=501
+      - PGID=501
+      - TZ=America/Los_Angeles
+      - PORT=8000
+      - DATA_PATH=/app/data
+      - OPENAI_API_KEY_FILE=/run/secrets/grocerybot_openai_key
+      - OPENAI_MODEL=gpt-5-mini
+    volumes:
+      - /docker/appdata/grocerybot:/app/data
+    ports:
+      - 8085:8000
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.services.grocerybot.loadbalancer.server.port=8000"
+      - "traefik.http.routers.grocerybot.rule=Host(`groceries.willflix.org`)"
+      - "traefik.http.routers.grocerybot.entrypoints=websecure"
+      - "traefik.http.routers.grocerybot.tls.certresolver=le"
+      - "traefik.docker.network=config_traefik_public"
+    networks:
+      - traefik_public
 
   samba:
     image: crazymax/samba:latest
