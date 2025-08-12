@@ -61,6 +61,9 @@ ALREADY_ENABLED=()
 echo
 echo "Processing services..."
 
+# Initial daemon reload to ensure systemd sees existing symlinks
+sudo systemctl daemon-reload
+
 for service_file in "${SERVICE_FILES[@]}"; do
     service_name=$(basename "$service_file")
     target_link="$SYSTEM_SYSTEMD_DIR/$service_name"
@@ -87,16 +90,13 @@ for service_file in "${SERVICE_FILES[@]}"; do
         fi
     fi
     
-    # Reload systemd daemon
-    sudo systemctl daemon-reload
-    
     # Check if already enabled
     if systemctl is-enabled "$service_name" >/dev/null 2>&1; then
         echo "(already enabled)"
         ALREADY_ENABLED+=("$service_name")
     else
         # Enable the service
-        if sudo systemctl enable "$service_name"; then
+        if sudo systemctl enable "$service_name" >/dev/null 2>&1; then
             echo "(enabled)"
             ENABLED_SERVICES+=("$service_name")
         else
@@ -106,7 +106,7 @@ for service_file in "${SERVICE_FILES[@]}"; do
         fi
     fi
     
-    ((SUCCESS_COUNT++))
+    SUCCESS_COUNT=$((SUCCESS_COUNT + 1))
 done
 
 # Final daemon reload
