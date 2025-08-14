@@ -684,12 +684,18 @@ services:
     container_name: nginx-public
     volumes:
       - /docker/appdata/nginx-public:/usr/share/nginx/html:ro
+      - /docker/config/nginx-public.conf:/etc/nginx/nginx.conf:ro
     labels:
       - "traefik.enable=true"
       - "traefik.http.services.nginx-public.loadbalancer.server.port=80"
       - "traefik.http.routers.nginx-public.rule=Host(`public.willflix.org`)"
       - "traefik.http.routers.nginx-public.entrypoints=websecure"
       - "traefik.http.routers.nginx-public.tls.certresolver=le"
+      - "traefik.http.routers.nginx-public.middlewares=nginx-public-logout@docker"
+      - "traefik.http.routers.logout.rule=Host(`logout.willflix.org`)"
+      - "traefik.http.routers.logout.entrypoints=websecure"
+      - "traefik.http.routers.logout.tls.certresolver=le"
+      - "traefik.http.routers.logout.service=nginx-public"
       - "traefik.docker.network=config_traefik_public"
     networks:
       - traefik_public
@@ -751,6 +757,7 @@ services:
       - traefik_public
     expose:
       - "8080"
+
 
   ddclient:
     image: lscr.io/linuxserver/ddclient:latest
