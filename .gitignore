@@ -1,6 +1,10 @@
 # Exclude application data and backups
 backup/
 
+# Exclude homebot data directories
+appdata/homebot/logs/
+appdata/homebot/attachments/
+
 # Exclude log files
 *.log
 

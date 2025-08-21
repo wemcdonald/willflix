@@ -1,0 +1,15 @@
+[Unit]
+Description=HomeBot Telegram Assistant
+Requires=docker.service
+After=docker.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=true
+WorkingDirectory=/docker/config
+ExecStart=/usr/bin/docker compose up -d homebot
+ExecStop=/usr/bin/docker compose stop homebot
+TimeoutStartSec=0
+
+[Install]
+WantedBy=multi-user.target

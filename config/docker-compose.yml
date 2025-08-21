@@ -21,6 +21,14 @@ secrets:
     file: ./secrets/homarr_encryption_key
   grocerybot_openai_key:
     file: ./secrets/grocerybot_openai_key
+  telegram_bot_token:
+    file: ./secrets/telegram_bot_token
+  telegram_api_hash:
+    file: ./secrets/telegram_api_hash
+  telegram_api_id:
+    file: ./secrets/telegram_api_id
+  anthropic_api_key:
+    file: ./secrets/anthropic_api_key
 
 services:
   backup:
@@ -50,7 +58,7 @@ services:
         --cleanup-cache
       RESTIC_FORGET_ARGS: >-
         --keep-last 10
-        --keep-daily 7
+        --keep-daily 14
         --keep-weekly 8
         --keep-monthly 24
       TZ: America/Los_Angeles
@@ -863,13 +871,103 @@ services:
       #- "ofelia.job-local.normalize-permissions.schedule=*/10 * * * *"
       #- "ofelia.job-local.normalize-permissions.command=bash /scripts/normalize_media_permissions"
 
+  homebot:
+    build:
+      context: /home/will/code/homebot
+      dockerfile: Dockerfile
+    container_name: homebot
+    restart: unless-stopped
+    
+    # Environment configuration using secrets
+    environment:
+      - PYTHONUNBUFFERED=1
+      - PYTHONPATH=/app
+      - TELEGRAM_BOT_TOKEN_FILE=/run/secrets/telegram_bot_token
+      - TELEGRAM_API_HASH_FILE=/run/secrets/telegram_api_hash
+      - TELEGRAM_API_ID_FILE=/run/secrets/telegram_api_id
+      - ANTHROPIC_API_KEY_FILE=/run/secrets/anthropic_api_key
+      - CLAUDE_CODE_WORKING_DIR=/app
+      - CLAUDE_CODE_MAX_TURNS=10
+      - ALLOWED_TOOLS=Read,Write,Bash,WebSearch
+      - CONTEXT_CLEANUP_MINUTES=30
+      - MAX_FILE_SIZE_MB=20
+      - TEMP_FILES_DIR=/tmp/attachments
+      - ATTACHMENTS_DIR=/app/attachments
+      - LOG_LEVEL=INFO
+      - LOG_FORMAT=json
+      - LOG_ROTATION=daily
+      - LOG_RETENTION_DAYS=30
+      - LOG_PER_USER=false
+      - ENABLE_SUB_AGENTS=true
+      - ENABLE_FILE_PROCESSING=true
+      - ENABLE_CONVERSATION_LOGGING=true
+      - DEBUG_ECHO=false
+    
+    # Secrets
+    secrets:
+      - telegram_bot_token
+      - telegram_api_hash
+      - telegram_api_id
+      - anthropic_api_key
+    
+    # Volume mounts
+    volumes:
+      # Agent configurations (read-only from appdata)
+      - /docker/appdata/homebot/agents:/app/agents:ro
+      
+      # Logs directory (persistent)
+      - /docker/appdata/homebot/logs:/app/logs
+      
+      # Session data (persistent)
+      - homebot_sessions:/app/sessions
+      
+      # Temporary files (cleaned on restart)
+      - homebot_temp:/app/temp
+      
+      # Attachments directory
+      - /docker/appdata/homebot/attachments:/app/attachments
+    
+    # Resource limits
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+          cpus: '0.5'
+        reservations:
+          memory: 256M
+          cpus: '0.1'
+    
+    # Health check
+    healthcheck:
+      test: ["CMD", "python", "-c", "import os; exit(0 if os.path.exists('/app/sessions/health') else 1)"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    
+    # Logging configuration
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    
+    # Network configuration
+    networks:
+      - homebot_network
+
 volumes:
   samba_config:
+  homebot_sessions:
+    driver: local
+  homebot_temp:
+    driver: local
 
 networks:
   traefik_public:
     name: config_traefik_public
-    external: true
+  homebot_network:
+    driver: bridge
   default:
     name: config_default
     external: true
