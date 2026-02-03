@@ -1016,6 +1016,52 @@ services:
       - homebot_network
       - traefik_public
 
+  gastown:
+    build:
+      context: /docker/appdata/gastown
+      dockerfile: Dockerfile
+    container_name: gastown
+    restart: unless-stopped
+    environment:
+      - NODE_ENV=development
+    volumes:
+      - /docker/appdata/gastown:/app
+      - /app/node_modules
+      - /app/.next
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.services.gastown.loadbalancer.server.port=3000"
+      - "traefik.http.routers.gastown.rule=Host(`gt.willflix.org`)"
+      - "traefik.http.routers.gastown.entrypoints=websecure"
+      - "traefik.http.routers.gastown.tls.certresolver=le"
+      - "traefik.http.routers.gastown.middlewares=authentik-forward@file"
+    networks:
+      - traefik_public
+
+  guildmaster:
+    build:
+      context: /docker/appdata/guildmaster
+      dockerfile: Dockerfile
+    container_name: guildmaster
+    restart: unless-stopped
+    environment:
+      - NODE_ENV=development
+      - PORT=3000
+      - VITE_PORT=5173
+    volumes:
+      - /docker/appdata/guildmaster:/app
+      - /app/node_modules
+      - /app/dist
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.services.guildmaster.loadbalancer.server.port=5173"
+      - "traefik.http.routers.guildmaster.rule=Host(`guildmaster.willflix.org`)"
+      - "traefik.http.routers.guildmaster.entrypoints=websecure"
+      - "traefik.http.routers.guildmaster.tls.certresolver=le"
+      - "traefik.http.routers.guildmaster.middlewares=authentik-forward@file"
+    networks:
+      - traefik_public
+
   overseerr:
     image: lscr.io/linuxserver/overseerr:latest
     container_name: overseerr
