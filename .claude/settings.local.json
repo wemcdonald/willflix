@@ -53,7 +53,11 @@
       "Bash(/usr/bin/docker inspect nginx-private)",
       "Bash(/usr/bin/docker compose -f /docker/config/webhook-service.yml down)",
       "Bash(/usr/bin/docker logs webhook-handler --tail 10)",
-      "Bash(/usr/bin/docker inspect webhook-handler)"
+      "Bash(/usr/bin/docker inspect webhook-handler)",
+      "Bash(whois:*)",
+      "mcp__context7__resolve-library-id",
+      "mcp__context7__get-library-docs",
+      "Bash(tree:*)"
     ],
     "deny": []
   }

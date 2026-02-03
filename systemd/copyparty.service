@@ -1,0 +1,15 @@
+[Unit]
+Description=Copyparty File Server
+Requires=docker.service
+After=docker.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=true
+WorkingDirectory=/docker/config
+ExecStart=/usr/bin/docker compose up -d copyparty
+ExecStop=/usr/bin/docker compose down copyparty
+TimeoutStartSec=0
+
+[Install]
+WantedBy=multi-user.target

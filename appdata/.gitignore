@@ -7,23 +7,27 @@
 # EXCLUDE MOST APP DIRECTORIES (data-heavy)
 # =============================================================================
 audiobookshelf/
+calibre/
 calibre-*/
+copyparty/
 healthbot/
+homarr/
+grocerybot/
 jdownloader/
+lazylibrarian/
+letsencrypt/
+lidarr/
 nextcloud*/
+nzbget/
+overseerr/
 postgres/
+prowlarr/
 qBittorrent/
 radarr/
 redis/
 sonarr/
+tautulli/
 vnc/
-nzbget/
-letsencrypt/
-prowlarr/
-lidarr/
-lazylibrarian/
-homarr/
-grocerybot/
 
 # =============================================================================
 # INCLUDE THESE DIRECTORIES ENTIRELY
@@ -53,6 +57,7 @@ grocerybot/
 !*/*.conf
 !*/categories.json
 !*/watched_folders.json
+!*/settings.json
 
 # =============================================================================
 # EXCLUDE SENSITIVE/DATA FILES FROM INCLUDED DIRS

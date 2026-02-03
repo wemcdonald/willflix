@@ -11,3 +11,6 @@ http:
           - "X-authentik-name"
           - "X-authentik-uid"
           - "Authorization"
+          - "X-Original-URL"
+          - "X-Forwarded-Proto"
+          - "X-Forwarded-Host"
