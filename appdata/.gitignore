@@ -54,6 +54,9 @@ vnc/
 !jdownloader/cfg/
 !jdownloader/cfg/**
 
+!opencode/config
+!opencode/config/**
+
 # App config files
 !*/config.xml
 !*/*.conf

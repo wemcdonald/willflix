@@ -1,0 +1,14 @@
+[Unit]
+Description=OpenCode Web Server
+After=network.target
+
+[Service]
+Type=simple
+User=will
+WorkingDirectory=/home/will
+ExecStart=/home/will/.opencode/bin/opencode serve --hostname 0.0.0.0 --port 3456
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
