@@ -1054,11 +1054,21 @@ services:
       - /app/dist
     labels:
       - "traefik.enable=true"
+      # Frontend service (Vite on port 5173)
       - "traefik.http.services.guildmaster.loadbalancer.server.port=5173"
+      # Backend service (Bun on port 3000) for WebSocket
+      - "traefik.http.services.guildmaster-backend.loadbalancer.server.port=3000"
+      # Main router for HTTP requests (with auth)
       - "traefik.http.routers.guildmaster.rule=Host(`guildmaster.willflix.org`)"
       - "traefik.http.routers.guildmaster.entrypoints=websecure"
       - "traefik.http.routers.guildmaster.tls.certresolver=le"
       - "traefik.http.routers.guildmaster.middlewares=authentik-forward@file"
+      - "traefik.http.routers.guildmaster.service=guildmaster"
+      # WebSocket router - goes directly to backend, bypassing Vite proxy
+      - "traefik.http.routers.guildmaster-ws.rule=Host(`guildmaster.willflix.org`) && PathPrefix(`/ws`)"
+      - "traefik.http.routers.guildmaster-ws.entrypoints=websecure"
+      - "traefik.http.routers.guildmaster-ws.tls.certresolver=le"
+      - "traefik.http.routers.guildmaster-ws.service=guildmaster-backend"
     networks:
       - traefik_public
 
