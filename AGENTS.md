@@ -24,6 +24,11 @@ Docker-based homelab on `willflix.org`. All services at `{name}.willflix.org`.
 
 Services typically join `traefik_public` for web access and `default` for database access.
 
+## Remote Access
+
+- **Public:** `{name}.willflix.org` via Traefik (HTTPS, most services behind Authentik)
+- **Tailscale:** Host is `willflix` (`100.87.47.17`) on the tailnet. Services binding `0.0.0.0` are reachable directly by port (e.g., `willflix:3456` for OpenCode). No auth layer on Tailscale — access is network-gated.
+
 ## Safety Rules
 
 **NEVER run bare `docker compose up -d` or `docker compose down` without specifying service names.** This will restart or destroy ALL services on the host.
