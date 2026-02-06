@@ -55,9 +55,9 @@ vnc/
 !jdownloader/cfg/
 !jdownloader/cfg/**
 
-# OpenCode configuration
-!opencode/config/
-!opencode/config/**
+# OpenCode configuration (entire directory tracked, noise excluded below)
+!opencode/
+!opencode/**
 
 # OpenClaw workspace (markdown configs, skills, package deps)
 !openclaw/
@@ -83,9 +83,12 @@ nginx-*/log/
 smtp-relay/logs/
 ofelia/logs/
 
-# OpenCode noise
-opencode/config/node_modules/
-opencode/config/*.swp
+# OpenCode noise (node_modules, runtime state, editor files)
+opencode/node_modules/
+opencode/bun.lock
+opencode/push-tokens.json
+opencode/*.swp
+opencode/*.swo
 
 # OpenClaw noise
 openclaw/workspace/node_modules/

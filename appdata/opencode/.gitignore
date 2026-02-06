@@ -1,4 +1,6 @@
 node_modules/
+bun.lock
+push-tokens.json
 *.swp
 *.swo
 *~
