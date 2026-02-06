@@ -13,6 +13,9 @@ appdata/homebot/attachments/
 *.swp
 *~
 
+# Exclude dependencies
+node_modules/
+
 # Exclude OS files
 .DS_Store
 Thumbs.db
