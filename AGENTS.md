@@ -28,6 +28,7 @@ Services typically join `traefik_public` for web access and `default` for databa
 
 - **Public:** `{name}.willflix.org` via Traefik (HTTPS, most services behind Authentik)
 - **Tailscale:** Host is `willflix` (`100.87.47.17`) on the tailnet, MagicDNS domain `tail88dba.ts.net`. Services binding `0.0.0.0` are reachable directly by port (e.g., `willflix.tail88dba.ts.net:3456` for OpenCode). No auth layer on Tailscale — access is network-gated.
+- **Port map:** Full inventory of ports, services, and subdomains at `appdata/nginx-private/home/ports.html` ([private.willflix.org/ports.html](https://private.willflix.org/ports.html)). Update when adding/removing services.
 
 ## Safety Rules
 
