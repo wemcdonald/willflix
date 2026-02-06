@@ -1,5 +1,12 @@
 http:
   middlewares:
+    opencode-rewrite-title:
+      plugin:
+        rewritebody:
+          lastModified: true
+          rewrites:
+            - regex: "<title>OpenCode</title>"
+              replacement: "<title>Willflix Code</title>"
     authentik-forward:
       forwardAuth:
         address: "http://authentik-server:9000/outpost.goauthentik.io/auth/traefik"
@@ -29,6 +36,7 @@ http:
         - websecure
       service: opencode
       middlewares:
+        - opencode-rewrite-title
         - authentik-forward
       tls:
         certResolver: le

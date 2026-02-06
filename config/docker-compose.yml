@@ -85,6 +85,8 @@ services:
       - "--certificatesresolvers.le.acme.httpChallenge.entryPoint=web"
       - "--log.level=DEBUG"
       - "--accesslog=true"
+      - "--experimental.plugins.rewritebody.modulename=github.com/traefik/plugin-rewritebody"
+      - "--experimental.plugins.rewritebody.version=v0.3.1"
     ports:
       - "80:80"
       - "443:443"
@@ -1048,10 +1050,11 @@ services:
       - NODE_ENV=development
       - PORT=3000
       - VITE_PORT=5173
+    ports:
+      - "5173:5173"
+      - "3000:3000"
     volumes:
       - /docker/appdata/guildmaster:/app
-      - /app/node_modules
-      - /app/dist
     labels:
       - "traefik.enable=true"
       # Frontend service (Vite on port 5173)
