@@ -197,3 +197,59 @@ source /docker/config/secrets/authentik_api_env
 ```
 
 All secrets files are git-crypt encrypted. Never commit plaintext secrets.
+
+## Network Binding & Tailscale Serve
+
+### Binding Policy
+
+Services should bind to the **narrowest interface** needed:
+
+| Access pattern | Bind to | Tailscale serve? | Example |
+|---------------|---------|-------------------|---------|
+| Public web (Traefik) | `0.0.0.0` or Docker default | No | Sonarr, Radarr |
+| Tailnet-only (direct port access) | `127.0.0.1` | Yes | PostgreSQL, Redis, Adminer |
+| Docker-internal only | No host port | No | smtp-relay |
+| Host-native + Tailnet | `127.0.0.1` | Yes | OpenCode serve/web |
+
+**Docker services** accessed only via Traefik don't need host port binding changes — Traefik reaches them over Docker networks, not host ports. The host port is a convenience for direct access.
+
+**Host-native services** (OpenCode, VNC, etc.) should bind `127.0.0.1` and use `tailscale serve` for tailnet access.
+
+### Tailscale Serve
+
+Tailscale serve creates HTTPS proxies on the tailnet, making `127.0.0.1`-bound services reachable at `willflix.tail88dba.ts.net:{port}`.
+
+**Source of truth:** `/docker/bin/tailscale-serve-setup`
+
+This script is the single config file for all tailscale serve entries. It resets all entries and re-applies them. To add/remove/change entries:
+
+1. Edit `/docker/bin/tailscale-serve-setup`
+2. Preview: `sudo /docker/bin/tailscale-serve-setup --dry-run`
+3. Apply: `sudo /docker/bin/tailscale-serve-setup`
+4. Commit the script change
+
+Entries persist across reboots (stored in tailscaled state). The script only needs to run when entries change.
+
+**Supported proxy types:**
+
+```bash
+# HTTPS → HTTP (web services)
+tailscale serve --bg --https=PORT http://127.0.0.1:PORT
+
+# TCP passthrough (databases, non-HTTP)
+tailscale serve --bg --tcp=PORT tcp://127.0.0.1:PORT
+
+# HTTPS → HTTPS (self-signed upstream)
+tailscale serve --bg --https=PORT https+insecure://127.0.0.1:PORT
+```
+
+**Access:** `willflix.tail88dba.ts.net:{port}` — tailnet-authenticated, no extra auth layer.
+
+### When Adding a New Service
+
+If the service needs tailnet-only direct access:
+
+1. Bind to `127.0.0.1` (in compose: `127.0.0.1:port:port`, in systemd: `--hostname 127.0.0.1`)
+2. Add a `tailscale serve` entry in `/docker/bin/tailscale-serve-setup`
+3. Run the setup script
+4. Update the port map at `/docker/appdata/nginx-private/home/ports.html`

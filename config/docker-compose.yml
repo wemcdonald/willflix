@@ -284,7 +284,7 @@ services:
     image: redis:latest
     restart: always
     ports:
-      - 6379:6379
+      - 127.0.0.1:6379:6379
     volumes:
       - /docker/appdata/redis:/data
     command: redis-server --appendonly yes # Example: enable AOF persistence
@@ -305,7 +305,7 @@ services:
     #      size: 134217728 # 128*2^20 bytes = 128Mb
     # user: 129:135 # 999:999 inside
     ports:
-      - 5432:5432
+      - 127.0.0.1:5432:5432
     volumes:
       - /docker/appdata/postgres/data:/var/lib/postgresql/data
     secrets:
@@ -320,7 +320,7 @@ services:
     image: adminer
     restart: always
     ports:
-      - 48080:8080
+      - 127.0.0.1:48080:8080
 
   sonarr:
     image: lscr.io/linuxserver/sonarr:latest
@@ -1051,8 +1051,8 @@ services:
       - PORT=3000
       - VITE_PORT=5173
     ports:
-      - "5173:5173"
-      - "3000:3000"
+      - "127.0.0.1:5173:5173"
+      - "127.0.0.1:3000:3000"
     volumes:
       - /docker/appdata/guildmaster:/app
     labels:
@@ -1108,8 +1108,8 @@ services:
       - /docker/appdata/openclaw/config:/home/node/.openclaw
       - /docker/appdata/openclaw/workspace:/home/node/.openclaw/workspace
     ports:
-      - 18789:18789
-      - 18790:18790
+      - 127.0.0.1:18789:18789
+      - 127.0.0.1:18790:18790
     init: true
     restart: unless-stopped
     command:
