@@ -30,6 +30,16 @@ http:
           - url: "http://172.30.0.1:4096"
 
   routers:
+    opencode-sse:
+      rule: "Host(`code.willflix.org`) && (PathPrefix(`/global/event`) || PathPrefix(`/event`))"
+      entryPoints:
+        - websecure
+      service: opencode
+      middlewares:
+        - authentik-forward
+      priority: 100
+      tls:
+        certResolver: le
     opencode:
       rule: "Host(`code.willflix.org`)"
       entryPoints:
