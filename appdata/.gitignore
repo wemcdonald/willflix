@@ -21,6 +21,7 @@ letsencrypt/
 lidarr/
 nextcloud*/
 nzbget/
+openclaw/
 overseerr/
 postgres/
 prowlarr/
@@ -54,8 +55,14 @@ vnc/
 !jdownloader/cfg/
 !jdownloader/cfg/**
 
-!opencode/config
+# OpenCode configuration
+!opencode/config/
 !opencode/config/**
+
+# OpenClaw workspace (markdown configs, skills, package deps)
+!openclaw/
+!openclaw/workspace/
+!openclaw/workspace/**
 
 # App config files
 !*/config.xml
@@ -75,3 +82,14 @@ nginx-*/logs/
 nginx-*/log/
 smtp-relay/logs/
 ofelia/logs/
+
+# OpenCode noise
+opencode/config/node_modules/
+opencode/config/*.swp
+
+# OpenClaw noise
+openclaw/workspace/node_modules/
+openclaw/workspace/.git/
+openclaw/workspace/memory/
+openclaw/workspace/MEMORY.md
+openclaw/workspace/*.swp
