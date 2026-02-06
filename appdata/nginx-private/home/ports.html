@@ -97,8 +97,8 @@
 <table>
     <thead><tr><th>Port</th><th>Service</th><th>Public Subdomain</th><th>Access</th><th>Notes</th></tr></thead>
     <tbody>
-        <tr><td class="port">3456</td><td>OpenCode (serve)</td><td>—</td><td><span class="tag tag-tailscale">tailscale</span></td><td class="notes">Headless API server</td></tr>
-        <tr><td class="port">4096</td><td>OpenCode (web)</td><td>—</td><td><span class="tag tag-tailscale">tailscale</span></td><td class="notes">Web UI</td></tr>
+        <tr><td class="port">3456</td><td>OpenCode (serve)</td><td>—</td><td><span class="tag tag-tailscale">tailscale</span></td><td class="notes">Headless API server (127.0.0.1 only, Tailscale proxied)</td></tr>
+        <tr><td class="port">4096</td><td>OpenCode (web)</td><td class="subdomain"><a href="https://code.willflix.org">code.willflix.org</a></td><td><span class="tag tag-public">public</span></td><td class="notes">Web UI (Traefik + Authentik)</td></tr>
         <tr><td class="port">18789</td><td>OpenClaw Gateway</td><td class="subdomain"><a href="https://claw.willflix.org">claw.willflix.org</a></td><td><span class="tag tag-public">public</span></td><td class="notes">OpenClaw MCP gateway</td></tr>
         <tr><td class="port">18790</td><td>OpenClaw Gateway</td><td>—</td><td><span class="tag tag-tailscale">tailscale</span></td><td class="notes">OpenClaw secondary port</td></tr>
         <tr><td class="port">3000</td><td>Guildmaster</td><td class="subdomain"><a href="https://guildmaster.willflix.org">guildmaster.willflix.org</a></td><td><span class="tag tag-public">public</span></td><td class="notes">API server</td></tr>
