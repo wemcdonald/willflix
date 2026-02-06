@@ -1,13 +1,10 @@
 {
-  "permission": {
-    "allow": {
-      "*": true
-    }
-  },
+  "$schema": "https://opencode.ai/config.json",
+  "permission": "allow",
   "mcp": {
     "playwright": {
       "type": "local",
-      "command": ["bunx", "@playwright/mcp@latest"],
+      "command": ["bunx", "@playwright/mcp@latest", "--headless", "--executable-path", "/opt/google/chrome/chrome"],
       "enabled": true
     }
   }
