@@ -36,6 +36,14 @@ Services typically join `traefik_public` for web access and `default` for databa
 
 **Secrets in `/docker/config/secrets/` are encrypted with git-crypt.** Never commit plaintext secrets. If git-crypt is not unlocked, secret files will appear as binary — do not overwrite them.
 
+## AGENTS.md Convention
+
+Every new project or piece of software must include one or more `AGENTS.md` files. These files should:
+
+- Describe the project's goals, major features, and architecture
+- Be concise and follow progressive disclosure — top-level summary first, details in subdirectory files as needed
+- Stay updated as the project evolves — any agent modifying the codebase should update AGENTS files when architecture, features, or conventions change
+
 ## Subdirectory Guides
 
 | File | Covers |
