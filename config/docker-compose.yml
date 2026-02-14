@@ -33,6 +33,16 @@ secrets:
     file: ./secrets/radarr_api_key
   sonarr_api_key:
     file: ./secrets/sonarr_api_key
+  gemini_api_key:
+    file: ./secrets/gemini_api_key
+  supabase_url:
+    file: ./secrets/supabase_url
+  supabase_anon_key:
+    file: ./secrets/supabase_anon_key
+  supabase_service_role_key:
+    file: ./secrets/supabase_service_role_key
+  supabase_jwt_secret:
+    file: ./secrets/supabase_jwt_secret
 
 services:
   backup:
@@ -1050,6 +1060,21 @@ services:
       - NODE_ENV=development
       - PORT=3000
       - VITE_PORT=5173
+      - SUPABASE_URL_FILE=/run/secrets/supabase_url
+      - SUPABASE_SERVICE_ROLE_KEY_FILE=/run/secrets/supabase_service_role_key
+      - SUPABASE_JWT_SECRET_FILE=/run/secrets/supabase_jwt_secret
+      - SUPABASE_ANON_KEY_FILE=/run/secrets/supabase_anon_key
+      - CLAUDE_API_KEY_FILE=/run/secrets/anthropic_api_key
+      - GEMINI_API_KEY_FILE=/run/secrets/gemini_api_key
+      - VITE_SUPABASE_URL=https://akmooahyrmopubriemlu.supabase.co
+      - VITE_SUPABASE_ANON_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFrbW9vYWh5cm1vcHVicmllbWx1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzA0MTQ1NDUsImV4cCI6MjA4NTk5MDU0NX0.P2JbnvbCImR3fFB_IBSxeGTlbuXYJlMWl0ZYVg9iX3c
+    secrets:
+      - anthropic_api_key
+      - gemini_api_key
+      - supabase_url
+      - supabase_anon_key
+      - supabase_service_role_key
+      - supabase_jwt_secret
     ports:
       - "127.0.0.1:5173:5173"
       - "127.0.0.1:3000:3000"
@@ -1075,6 +1100,31 @@ services:
     networks:
       - traefik_public
 
+  health-server:
+    build:
+      context: /docker/appdata/health-server
+      dockerfile: Dockerfile
+    container_name: health-server
+    restart: unless-stopped
+    env_file:
+      - /docker/config/secrets/healthserver_env
+    environment:
+      - TZ=America/Los_Angeles
+      - SERVER_HOST=0.0.0.0
+      - SERVER_PORT=3500
+      - LOG_LEVEL=info
+    depends_on:
+      - postgres
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.services.health-server.loadbalancer.server.port=3500"
+      - "traefik.http.routers.health-server.rule=Host(`healthdata.willflix.org`)"
+      - "traefik.http.routers.health-server.entrypoints=websecure"
+      - "traefik.http.routers.health-server.tls.certresolver=le"
+    networks:
+      - traefik_public
+      - default
+
   overseerr:
     image: lscr.io/linuxserver/overseerr:latest
     container_name: overseerr
@@ -1096,59 +1146,6 @@ services:
       - "traefik.http.services.overseerr.loadbalancer.server.port=5055"
     networks:
       - traefik_public
-
-  openclaw-gateway:
-    image: alpine/openclaw:latest
-    container_name: openclaw-gateway
-    environment:
-      - HOME=/home/node
-      - TERM=xterm-256color
-      - TZ=America/Los_Angeles
-    volumes:
-      - /docker/appdata/openclaw/config:/home/node/.openclaw
-      - /docker/appdata/openclaw/workspace:/home/node/.openclaw/workspace
-    ports:
-      - 127.0.0.1:18789:18789
-      - 127.0.0.1:18790:18790
-    init: true
-    restart: unless-stopped
-    command:
-      [
-        "node",
-        "dist/index.js",
-        "gateway",
-        "--bind",
-        "lan",
-        "--port",
-        "18789",
-      ]
-    labels:
-      - "traefik.enable=true"
-      - "traefik.http.services.openclaw.loadbalancer.server.port=18789"
-      - "traefik.http.routers.openclaw.rule=Host(`claw.willflix.org`)"
-      - "traefik.http.routers.openclaw.entrypoints=websecure"
-      - "traefik.http.routers.openclaw.tls.certresolver=le"
-      - "traefik.http.routers.openclaw.middlewares=authentik-forward@file"
-    networks:
-      - traefik_public
-
-  openclaw-cli:
-    image: alpine/openclaw:latest
-    container_name: openclaw-cli
-    environment:
-      - HOME=/home/node
-      - TERM=xterm-256color
-      - BROWSER=echo
-      - TZ=America/Los_Angeles
-    volumes:
-      - /docker/appdata/openclaw/config:/home/node/.openclaw
-      - /docker/appdata/openclaw/workspace:/home/node/.openclaw/workspace
-    stdin_open: true
-    tty: true
-    init: true
-    profiles:
-      - cli
-    entrypoint: ["node", "dist/index.js"]
 
   copyparty:
     image: copyparty/ac:latest

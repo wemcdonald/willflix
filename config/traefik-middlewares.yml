@@ -27,7 +27,7 @@ http:
     opencode:
       loadBalancer:
         servers:
-          - url: "http://172.30.0.1:4096"
+          - url: "http://172.30.0.1:4097"
 
   routers:
     opencode-sse:

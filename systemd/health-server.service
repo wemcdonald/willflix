@@ -1,5 +1,5 @@
 [Unit]
-Description=OpenClaw AI Agent Gateway
+Description=Health Data Server
 Requires=docker.service
 After=docker.service
 
@@ -7,8 +7,8 @@ After=docker.service
 Type=oneshot
 RemainAfterExit=true
 WorkingDirectory=/docker/config
-ExecStart=/usr/bin/docker compose up -d openclaw-gateway
-ExecStop=/usr/bin/docker compose stop openclaw-gateway
+ExecStart=/usr/bin/docker compose up -d health-server
+ExecStop=/usr/bin/docker compose down health-server
 TimeoutStartSec=0
 
 [Install]
