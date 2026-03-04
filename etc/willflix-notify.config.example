@@ -13,7 +13,10 @@ NOTIFY_EMAIL="wemcdonald@gmail.com"
 DEDUP_DIR="/var/tmp/willflix-notify"
 DEDUP_WINDOW=21600  # 6 hours
 
-# UptimeRobot heartbeat URL (get from UptimeRobot dashboard)
+# External watchdog ping URLs (set one or both)
+# healthchecks.io: free, outbound ping — https://healthchecks.io
+HEALTHCHECKS_PING_URL=""
+# UptimeRobot: free, but inbound HTTP monitoring — https://uptimerobot.com
 UPTIMEROBOT_HEARTBEAT_URL=""
 
 # Monitor freshness — monitoring scripts touch files here on success

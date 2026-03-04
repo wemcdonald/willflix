@@ -63,12 +63,16 @@ if [[ -n "$STALE" ]]; then
         --body "$(echo -e "The following monitors are stale:\n\n${STALE}\nCheck that cron jobs are running:\n  sudo crontab -l\n  journalctl -u cron --since '1 hour ago'")"
 fi
 
-# --- External watchdog ping ---
+# --- External watchdog pings ---
+# Supports multiple URLs (healthchecks.io, UptimeRobot, etc.)
 
-if [[ -n "${UPTIMEROBOT_HEARTBEAT_URL:-}" ]]; then
-    curl -fsS --max-time 10 "$UPTIMEROBOT_HEARTBEAT_URL" >/dev/null 2>&1 || {
-        "$NOTIFY" --severity WARNING --key "watchdog-ping-fail" \
-            --subject "UptimeRobot ping failed on $(hostname)" \
-            --body "Failed to ping UptimeRobot heartbeat URL. Check network connectivity."
+for url_var in HEALTHCHECKS_PING_URL UPTIMEROBOT_HEARTBEAT_URL; do
+    url="${!url_var:-}"
+    [[ -z "$url" ]] && continue
+    curl -fsS --max-time 10 "$url" >/dev/null 2>&1 || {
+        "$NOTIFY" --severity WARNING --key "watchdog-ping-fail-${url_var}" \
+            --subject "Watchdog ping failed on $(hostname)" \
+            --body "Failed to ping ${url_var}. Check network connectivity.
+URL: ${url}"
     }
-fi
+done
