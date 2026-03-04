@@ -1,0 +1,86 @@
+#!/bin/bash
+# willflix-notify-send — deliver a notification via a specific channel.
+# Internal script called by willflix-notify. Not intended for direct use.
+#
+# Usage:
+#   willflix-notify-send --channel email --subject "..." [--body "..."]
+#   willflix-notify-send --channel pushover --subject "..." [--body "..."] [--priority 0]
+
+set -euo pipefail
+
+CHANNEL=""
+SUBJECT=""
+BODY=""
+PRIORITY=0
+
+# Parse args
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --channel)  CHANNEL="$2";  shift 2 ;;
+        --subject)  SUBJECT="$2";  shift 2 ;;
+        --body)     BODY="$2";     shift 2 ;;
+        --priority) PRIORITY="$2"; shift 2 ;;
+        *) echo "Unknown arg: $1" >&2; exit 1 ;;
+    esac
+done
+
+if [[ -z "$CHANNEL" || -z "$SUBJECT" ]]; then
+    echo "Usage: willflix-notify-send --channel <email|pushover> --subject <text> [--body <text>] [--priority <n>]" >&2
+    exit 1
+fi
+
+# Load config
+CONFIG_FILE="${HOME}/.config/willflix-notify/config"
+if [[ ! -f "$CONFIG_FILE" ]]; then
+    echo "Config not found: $CONFIG_FILE" >&2
+    exit 1
+fi
+# shellcheck source=/dev/null
+source "$CONFIG_FILE"
+
+send_email() {
+    local to="${NOTIFY_EMAIL:?NOTIFY_EMAIL not set in config}"
+    cat << EOF | /usr/sbin/sendmail -t
+To: ${to}
+Subject: ${SUBJECT}
+From: root@willflix.org
+
+${BODY}
+EOF
+}
+
+send_pushover() {
+    local token="${PUSHOVER_APP_TOKEN:?PUSHOVER_APP_TOKEN not set in config}"
+    local user="${PUSHOVER_USER_KEY:?PUSHOVER_USER_KEY not set in config}"
+
+    local -a curl_args=(
+        -s -o /dev/null -w "%{http_code}"
+        --form-string "token=${token}"
+        --form-string "user=${user}"
+        --form-string "title=${SUBJECT}"
+        --form-string "message=${BODY:-$SUBJECT}"
+        --form-string "priority=${PRIORITY}"
+    )
+
+    # Emergency priority (2) requires retry and expire params
+    if [[ "$PRIORITY" == "2" ]]; then
+        curl_args+=(--form-string "retry=300" --form-string "expire=3600")
+    fi
+
+    local http_code
+    http_code=$(curl "${curl_args[@]}" https://api.pushover.net/1/messages.json)
+
+    if [[ "$http_code" != "200" ]]; then
+        echo "Pushover API returned HTTP $http_code" >&2
+        return 1
+    fi
+}
+
+case "$CHANNEL" in
+    email)    send_email    ;;
+    pushover) send_pushover ;;
+    *)
+        echo "Unknown channel: $CHANNEL" >&2
+        exit 1
+        ;;
+esac
