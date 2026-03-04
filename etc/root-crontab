@@ -10,5 +10,9 @@ MAILTO=will
 # MergerFS pool health check (every 15 min)
 */15 * * * * /home/will/bin/cron/check_mergerfs_health
 
+# Heartbeat — weekly channel test (Sun 9am), daily freshness + watchdog (Mon-Sat 9am)
+0 9 * * 0 /home/will/bin/cron/willflix-heartbeat --full
+0 9 * * 1-6 /home/will/bin/cron/willflix-heartbeat --silent
+
 # Backups
 0 0 * * * /usr/local/bin/cronic /home/will/bin/cron/backup_plex
