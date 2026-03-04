@@ -3,7 +3,9 @@
 # Detects: unmounted drives, I/O errors, read-only remounts.
 # Run every 15 minutes via cron.
 
-# Note: no set -e because sendmail-system returns 1 even on success
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+NOTIFY="$(cd "$SCRIPT_DIR/.." && pwd)/willflix-notify"
+MONITOR_STAMP="/var/tmp/willflix-monitors/check_mergerfs_health"
 
 EXPECTED_DRIVES="MediaA MediaB MediaC MediaD MediaE MediaF MediaG MediaH MediaI MediaJ MediaK"
 ERRORS=""
@@ -36,19 +38,11 @@ if ! mountpoint -q /Volumes/Media 2>/dev/null; then
 fi
 
 if [ -n "$ERRORS" ]; then
-    cat << EOF | /usr/sbin/sendmail -t || true
-To: wemcdonald@gmail.com
-Subject: CRITICAL: mergerfs pool degraded on $(hostname)
-From: root@willflix.org
-
-One or more drives in the mergerfs pool have problems:
-
-$(echo -e "$ERRORS")
-Immediate action required.
-
-Quick diagnostics:
-  df -h /Volumes/Media*
-  dmesg | grep -i error | tail -20
-  sudo smartctl -H /dev/sdX
-EOF
+    "$NOTIFY" --severity CRITICAL --key "mergerfs-degraded" \
+        --subject "MergerFS pool degraded on $(hostname)" \
+        --body "$(echo -e "One or more drives in the mergerfs pool have problems:\n\n${ERRORS}\nImmediate action required.\n\nQuick diagnostics:\n  df -h /Volumes/Media*\n  dmesg | grep -i error | tail -20\n  sudo smartctl -H /dev/sdX")"
 fi
+
+# Touch freshness stamp on successful check (even if errors found — the check itself ran)
+mkdir -p "$(dirname "$MONITOR_STAMP")"
+touch "$MONITOR_STAMP"
