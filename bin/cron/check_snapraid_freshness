@@ -5,18 +5,18 @@
 
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+NOTIFY="$(cd "$SCRIPT_DIR/.." && pwd)/willflix-notify"
+MONITOR_STAMP="/var/tmp/willflix-monitors/check_snapraid_freshness"
+
 MAX_AGE_DAYS=3
 CONTENT_FILE="/Volumes/MediaB/snapraid.content"
 
 if [ ! -f "$CONTENT_FILE" ]; then
-    cat << EOF | /usr/sbin/sendmail -t || true
-To: wemcdonald@gmail.com
-Subject: CRITICAL: snapraid content file missing on $(hostname)
-From: root@willflix.org
-
-The snapraid content file $CONTENT_FILE does not exist.
-This means snapraid cannot sync or recover data.
-EOF
+    "$NOTIFY" --severity CRITICAL --key "snapraid-content-missing" \
+        --subject "SnapRAID content file missing on $(hostname)" \
+        --body "The snapraid content file $CONTENT_FILE does not exist.
+This means snapraid cannot sync or recover data."
     exit 1
 fi
 
@@ -30,12 +30,9 @@ if [ "$FILE_AGE_DAYS" -gt "$MAX_AGE_DAYS" ]; then
         RUNNING_NOTE="Note: snapraid is currently running ($(pgrep -a snapraid | head -1))"
     fi
 
-    cat << EOF | /usr/sbin/sendmail -t || true
-To: wemcdonald@gmail.com
-Subject: WARNING: snapraid sync is ${FILE_AGE_DAYS} days stale on $(hostname)
-From: root@willflix.org
-
-The snapraid content file hasn't been updated in $FILE_AGE_DAYS days.
+    "$NOTIFY" --severity WARNING --key "snapraid-stale" \
+        --subject "SnapRAID sync is ${FILE_AGE_DAYS} days stale on $(hostname)" \
+        --body "The snapraid content file hasn't been updated in $FILE_AGE_DAYS days.
 Last modified: $(stat -c %y "$CONTENT_FILE")
 Threshold: $MAX_AGE_DAYS days
 $RUNNING_NOTE
@@ -44,6 +41,9 @@ Check if snapraid cron is running:
   ps aux | grep snapraid
 
 Check the log:
-  tail -50 /var/log/snapraid-daily.log
-EOF
+  tail -50 /var/log/snapraid-daily.log"
 fi
+
+# Touch freshness stamp
+mkdir -p "$(dirname "$MONITOR_STAMP")"
+touch "$MONITOR_STAMP"
