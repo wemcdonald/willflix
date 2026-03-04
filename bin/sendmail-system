@@ -152,33 +152,31 @@ if ! docker ps --format "table {{.Names}}" | grep -q "^smtp-relay$"; then
     exit 1
 fi
 
-# Send email through smtp-relay container for each recipient
+# Send email through smtp-relay container using curl (proper SMTP protocol)
 success_count=0
 for recipient in "${FINAL_RECIPIENTS[@]}"; do
     if [[ -n "$recipient" ]]; then
         log "Sending to: $recipient"
-        
-        # Create SMTP conversation
-        smtp_commands=$(cat << EOF
-HELO $(hostname)
-MAIL FROM: <$FROM_ADDRESS>
-RCPT TO: <$recipient>
-DATA
+
+        # Build the email message
+        EMAIL_MSG=$(cat << EOF
 From: $FROM_ADDRESS
 To: $recipient
 Subject: $SUBJECT
 Date: $(date -R)
 
 $BODY
-.
-QUIT
 EOF
 )
-        
-        # Send via netcat to smtp-relay container
-        if echo "$smtp_commands" | nc -w 30 "$SMTP_RELAY_HOST" "$SMTP_RELAY_PORT" >/dev/null 2>&1; then
+
+        # Send via curl SMTP (handles protocol correctly, unlike netcat)
+        if echo "$EMAIL_MSG" | curl --silent --show-error \
+            --url "smtp://${SMTP_RELAY_HOST}:${SMTP_RELAY_PORT}" \
+            --mail-from "$FROM_ADDRESS" \
+            --mail-rcpt "$recipient" \
+            -T - 2>/dev/null; then
             log "Successfully sent to: $recipient"
-            ((success_count++))
+            success_count=$((success_count + 1))
         else
             log "ERROR: Failed to send to: $recipient"
         fi
