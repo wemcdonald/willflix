@@ -67,10 +67,28 @@
 - [ ] 6.6 Consider snapraid-runner or similar wrapper with built-in safeguards
 - [ ] 6.7 Acquire a new spare drive to replace MediaSpare's role
 
-## Current State
+## Current State (updated 2026-03-04)
 
+**Recovery in progress:**
+- rsync from `/tmp/mediaj-recovery/` → `/Volumes/MediaSpare/` running in user's tmux (~38hrs at 70MB/s)
+- After rsync: run `sudo snapraid fix -d d10 -l /tmp/snapraid-fix.log`
+- After fix: Phase 4 (relabel MediaSpare → MediaJ, rebuild array)
+
+**Drives:**
 - **Old MediaJ** (dying): Read-only mounted at `/tmp/mediaj-recovery` (`/dev/sdu1`, WDC WD120EMAZ, serial 8CGR2NSE). To be retired and physically removed.
 - **MediaSpare** (recovery target): 13TB at `/Volumes/MediaSpare` (`/dev/sdm1`). Will be relabeled to MediaJ after recovery.
-- **MergerFS**: MediaJ is not in the pool. Files on MediaJ are not visible through `/Volumes/Media`.
-- **SnapRAID**: Unlocked, not running. Last sync: May 1, 2025. Triple parity intact.
-- **Radarr/Sonarr**: Should be paused during recovery to avoid wasted re-downloads.
+- **MediaC** (sdb): 6 pending sectors, SMART long test started 2026-03-04 ~13:30, est. 7.5hrs.
+
+**Infrastructure fixes applied 2026-03-04 (P0):**
+- Killed stuck snapraid processes, removed stale lock, fixed stale content file
+- Rewrote snapraid_daily/weekly/check_for_deletes with timeouts and alerting
+- Added check_snapraid_freshness (daily 8:30am) and check_mergerfs_health (every 15min) to root crontab
+- Fixed `MAILTO=""` suppression in root crontab, removed cronic wrapper from snapraid jobs
+- Fixed sendmail-system (netcat→curl) — ALL prior email alerts were silently dropped
+- Rewrote /etc/smartd.conf: 18 drives pinned by stable ata-ID paths, monthly self-tests
+- Root cause of May–Dec sync gap identified (interrupted sync + MAILTO="" suppression)
+
+**Still pending:**
+- MergerFS: MediaJ is not in the pool. Files on MediaJ are not visible through `/Volumes/Media`.
+- SnapRAID: Unlocked, not running. Content files synced to May 1, 2025 snapshot. Triple parity intact.
+- Radarr/Sonarr: Should be paused during recovery to avoid wasted re-downloads.
