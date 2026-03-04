@@ -1,0 +1,180 @@
+#!/bin/bash
+# willflix-notify — multi-channel notification with severity routing and dedup.
+#
+# Usage:
+#   willflix-notify --severity CRITICAL --key "mergerfs-degraded" \
+#     --subject "MergerFS pool degraded" --body "Details..."
+#
+#   echo "body from stdin" | willflix-notify --severity WARNING \
+#     --key "snapraid-stale" --subject "SnapRAID sync stale"
+#
+#   willflix-notify --test --subject "Test all channels"
+#
+# Severity routing:
+#   INFO     → email only
+#   WARNING  → email + pushover (normal)
+#   CRITICAL → email + pushover (emergency, repeats until ack'd)
+#   META     → cross-channel failover (if one fails, alert via other)
+
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+SEND="${SCRIPT_DIR}/willflix-notify-send"
+
+SEVERITY=""
+KEY=""
+SUBJECT=""
+BODY=""
+TEST_MODE=false
+
+# Parse args
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --severity) SEVERITY="$2"; shift 2 ;;
+        --key)      KEY="$2";      shift 2 ;;
+        --subject)  SUBJECT="$2";  shift 2 ;;
+        --body)     BODY="$2";     shift 2 ;;
+        --test)     TEST_MODE=true; shift ;;
+        *) echo "Unknown arg: $1" >&2; exit 1 ;;
+    esac
+done
+
+# Read body from stdin if not provided and stdin is not a terminal
+if [[ -z "$BODY" && ! -t 0 ]]; then
+    BODY=$(cat)
+fi
+
+# Validate required args
+if [[ -z "$SUBJECT" ]]; then
+    echo "Usage: willflix-notify --severity <level> --key <dedup-key> --subject <text> [--body <text>]" >&2
+    exit 1
+fi
+
+if [[ "$TEST_MODE" == "false" && ( -z "$SEVERITY" || -z "$KEY" ) ]]; then
+    echo "--severity and --key are required (unless using --test)" >&2
+    exit 1
+fi
+
+# Load config (for dedup settings)
+CONFIG_FILE="${HOME}/.config/willflix-notify/config"
+if [[ ! -f "$CONFIG_FILE" ]]; then
+    # First-run: create config from example
+    EXAMPLE="$(cd "$(dirname "$0")/../etc" && pwd)/willflix-notify.config.example"
+    mkdir -p "$(dirname "$CONFIG_FILE")"
+    if [[ -f "$EXAMPLE" ]]; then
+        cp "$EXAMPLE" "$CONFIG_FILE"
+        echo "Created config at $CONFIG_FILE — please fill in Pushover credentials and re-run." >&2
+    else
+        echo "No config found at $CONFIG_FILE and no example to copy." >&2
+    fi
+    exit 1
+fi
+# shellcheck source=/dev/null
+source "$CONFIG_FILE"
+
+DEDUP_DIR="${DEDUP_DIR:-/var/tmp/willflix-notify}"
+DEDUP_WINDOW="${DEDUP_WINDOW:-21600}"
+
+# --- Dedup check ---
+
+is_deduped() {
+    [[ "$TEST_MODE" == "true" ]] && return 1  # --test bypasses dedup
+
+    local keyfile="${DEDUP_DIR}/${KEY}"
+    if [[ -f "$keyfile" ]]; then
+        local age=$(( $(date +%s) - $(stat -c %Y "$keyfile") ))
+        if [[ "$age" -lt "$DEDUP_WINDOW" ]]; then
+            return 0  # suppress
+        fi
+    fi
+    return 1  # not deduped, send it
+}
+
+touch_dedup() {
+    mkdir -p "$DEDUP_DIR"
+    touch "${DEDUP_DIR}/${KEY}"
+}
+
+# --- Logging ---
+
+log() {
+    logger -t willflix-notify "$*"
+}
+
+# --- Send helpers ---
+
+send_email() {
+    if "$SEND" --channel email --subject "$SUBJECT" --body "$BODY"; then
+        log "OK channel=email severity=$SEVERITY key=$KEY"
+        return 0
+    else
+        log "FAIL channel=email severity=$SEVERITY key=$KEY"
+        echo "willflix-notify: email send failed for key=$KEY" >&2
+        return 1
+    fi
+}
+
+send_pushover() {
+    local priority="${1:-0}"
+    if "$SEND" --channel pushover --subject "$SUBJECT" --body "$BODY" --priority "$priority"; then
+        log "OK channel=pushover severity=$SEVERITY key=$KEY priority=$priority"
+        return 0
+    else
+        log "FAIL channel=pushover severity=$SEVERITY key=$KEY priority=$priority"
+        echo "willflix-notify: pushover send failed for key=$KEY" >&2
+        return 1
+    fi
+}
+
+# --- Routing ---
+
+if is_deduped; then
+    log "DEDUP severity=$SEVERITY key=$KEY (suppressed)"
+    exit 0
+fi
+
+if [[ "$TEST_MODE" == "true" ]]; then
+    echo "willflix-notify: test mode — sending via all channels"
+    send_email || true
+    send_pushover 0 || true
+    exit 0
+fi
+
+case "$SEVERITY" in
+    INFO)
+        send_email || true
+        ;;
+    WARNING)
+        send_email || true
+        send_pushover 0 || true
+        ;;
+    CRITICAL)
+        send_email || true
+        send_pushover 2 || true
+        ;;
+    META)
+        # Cross-channel failover
+        email_ok=true
+        pushover_ok=true
+        send_email    || email_ok=false
+        send_pushover 0 || pushover_ok=false
+
+        if [[ "$email_ok" == "false" && "$pushover_ok" == "true" ]]; then
+            "$SEND" --channel pushover --subject "META: Email alerting is broken on $(hostname)" \
+                --body "willflix-notify failed to send email. Check smtp-relay container." --priority 0 || true
+        fi
+        if [[ "$pushover_ok" == "false" && "$email_ok" == "true" ]]; then
+            "$SEND" --channel email --subject "META: Pushover alerting is broken on $(hostname)" \
+                --body "willflix-notify failed to send via Pushover. Check API credentials and network." || true
+        fi
+        if [[ "$email_ok" == "false" && "$pushover_ok" == "false" ]]; then
+            echo "$(date): BOTH channels failed for key=$KEY" >> /var/log/willflix-notify-failures.log
+        fi
+        ;;
+    *)
+        echo "Unknown severity: $SEVERITY (use INFO, WARNING, CRITICAL, META)" >&2
+        exit 1
+        ;;
+esac
+
+touch_dedup
