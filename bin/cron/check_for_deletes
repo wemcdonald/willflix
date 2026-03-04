@@ -5,6 +5,9 @@
 
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+NOTIFY="$(cd "$SCRIPT_DIR/.." && pwd)/willflix-notify"
+
 TIMEOUT=3600  # 1 hour max for diff
 IGNORE_PATTERN="^removed (Backups|Plex)"
 
@@ -27,7 +30,19 @@ if [ -n "$DELETED_LINES" ]; then
 fi
 
 if [ "$DELETED_COUNT" -gt 0 ]; then
-    echo "$DELETED_COUNT unexpected deletes found:" >&2
-    echo "$DELETED_LINES" >&2
+    "$NOTIFY" --severity CRITICAL --key "snapraid-excess-deletes" \
+        --subject "SnapRAID: $DELETED_COUNT unexpected deletes on $(hostname)" \
+        --body "snapraid sync blocked — $DELETED_COUNT files were deleted unexpectedly.
+
+Deleted files:
+$(echo "$DELETED_LINES" | head -20)
+$([ "$DELETED_COUNT" -gt 20 ] && echo "... and $((DELETED_COUNT - 20)) more")
+
+This could indicate a drive failure or accidental deletion.
+Sync has been blocked to protect parity.
+
+To investigate:
+  snapraid diff | grep '^removed'
+  dmesg | grep -i error | tail -20"
     exit 1
 fi
