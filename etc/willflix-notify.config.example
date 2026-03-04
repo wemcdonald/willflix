@@ -1,0 +1,20 @@
+# willflix-notify configuration
+# Copy to ~/.config/willflix-notify/config and fill in values.
+
+# Pushover credentials — get these from https://pushover.net
+# Create an application at https://pushover.net/apps/build
+PUSHOVER_APP_TOKEN=""
+PUSHOVER_USER_KEY=""
+
+# Email recipient for alerts
+NOTIFY_EMAIL="wemcdonald@gmail.com"
+
+# Dedup: suppress repeat alerts with the same --key for this many seconds
+DEDUP_DIR="/var/tmp/willflix-notify"
+DEDUP_WINDOW=21600  # 6 hours
+
+# UptimeRobot heartbeat URL (get from UptimeRobot dashboard)
+UPTIMEROBOT_HEARTBEAT_URL=""
+
+# Monitor freshness — monitoring scripts touch files here on success
+MONITOR_FRESHNESS_DIR="/var/tmp/willflix-monitors"
