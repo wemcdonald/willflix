@@ -1,0 +1,19 @@
+#!/bin/sh
+# this script was initially written for Redhat/CentOS
+# file is /etc/cron.daily/diskAlert.cron
+# requires enabling outgoing sendmail from localhost to a valid 
+# smtp server, which is usually disabled by default
+ADMIN="will"
+THRESHOLD=100
+
+df -PH --block-size=1G | grep -E 'Media' | awk '{ print $4 " " $6 }' | egrep '^[0-9]' | while read output;
+do
+  usedg=$(echo $output | awk '{ print $1}' | cut -d'%' -f1 )
+  partition=$(echo $output | awk '{print $2}' )
+  if [ $usedg -le $THRESHOLD ]; then
+    echo "Running out of space $partition ${usedg}G on $(date)" |
+    mail -a "From: Willflix <will@willflix.org>" -s "Alert: Almost out of disk space on $partition - ${usedg}G" $ADMIN
+  fi
+done
+
+

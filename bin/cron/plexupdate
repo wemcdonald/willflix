@@ -1,0 +1,2 @@
+#!/bin/bash
+/opt/plexupdate/extras/cronwrapper && sed -i -e 's/<VideoProfile container="mp4" codec="h264" audioCodec="aac" subtitleCodec="mov_text" context="static" \/>/<VideoProfile container="mp4" codec="h264" audioCodec="aac" subtitleCodec="mov_text" context="static" \/>\n    <VideoProfile container="mkv" codec="h264,h265" audioCodec="flac,aac" \/>/' /usr/lib/plexmediaserver/Resources/Profiles/iOS.xml

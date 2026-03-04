@@ -1,0 +1,3 @@
+#!/bin/bash
+docker compose -f /docker/config/docker-compose.yml pull --ignore-pull-failures
+docker compose -f /docker/config/docker-compose.yml up -d

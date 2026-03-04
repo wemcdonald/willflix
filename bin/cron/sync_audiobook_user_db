@@ -1,0 +1,4 @@
+#!/bin/bash
+
+cd /opt/calibre-web
+echo "ATTACH 'books.db' AS b; INSERT INTO user SELECT * from b.user WHERE true ON CONFLICT(nickname) DO UPDATE SET password=excluded.password;" | sqlite3 audiobooks.db

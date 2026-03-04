@@ -1,0 +1,7 @@
+#!/bin/bash
+
+DEST=/Volumes/Media
+
+if mountpoint -q -- "$DEST"; then
+  /usr/local/bin/gmvault sync -t quick wemcdonald@gmail.com
+fi

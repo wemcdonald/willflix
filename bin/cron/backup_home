@@ -1,0 +1,6 @@
+#!/bin/bash
+
+SRC=/home/will/home
+DEST=/Volumes/MediaI/Backup/home
+
+sudo /usr/bin/rsync --archive --hard-links --sparse --delete $SRC $DEST

@@ -1,0 +1,9 @@
+#!/bin/bash
+
+SRC=/Volumes/Plex
+DEST=/Volumes/Bonus1
+
+if mountpoint -q -- "$DEST" && [[ -d "$SRC/Plex Media Server/" ]]; then
+  /usr/bin/rsync --archive --hard-links --sparse --delete --exclude=Cache/Transcode "$SRC/Plex Media Server/" "$DEST/Plex Media Server.backup"
+fi
+# h

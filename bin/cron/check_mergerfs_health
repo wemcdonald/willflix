@@ -1,0 +1,54 @@
+#!/bin/bash
+# check_mergerfs_health - verify all mergerfs pool drives are healthy
+# Detects: unmounted drives, I/O errors, read-only remounts.
+# Run every 15 minutes via cron.
+
+# Note: no set -e because sendmail-system returns 1 even on success
+
+EXPECTED_DRIVES="MediaA MediaB MediaC MediaD MediaE MediaF MediaG MediaH MediaI MediaJ MediaK"
+ERRORS=""
+
+for drive in $EXPECTED_DRIVES; do
+    MOUNT="/Volumes/$drive"
+
+    # Check if mounted
+    if ! mountpoint -q "$MOUNT" 2>/dev/null; then
+        ERRORS="${ERRORS}  $drive: NOT MOUNTED\n"
+        continue
+    fi
+
+    # Check if readable (try listing the directory)
+    if ! ls "$MOUNT/" >/dev/null 2>&1; then
+        ERRORS="${ERRORS}  $drive: MOUNTED BUT UNREADABLE (I/O error)\n"
+        continue
+    fi
+
+    # Check if read-only (remounted due to errors)
+    if awk -v mp="$MOUNT" '$2 == mp { print $4 }' /proc/mounts | grep -q '\bro\b' 2>/dev/null; then
+        ERRORS="${ERRORS}  $drive: REMOUNTED READ-ONLY (filesystem errors)\n"
+        continue
+    fi
+done
+
+# Also check that the mergerfs mount itself exists
+if ! mountpoint -q /Volumes/Media 2>/dev/null; then
+    ERRORS="${ERRORS}  MergerFS: /Volumes/Media NOT MOUNTED\n"
+fi
+
+if [ -n "$ERRORS" ]; then
+    cat << EOF | /usr/sbin/sendmail -t || true
+To: wemcdonald@gmail.com
+Subject: CRITICAL: mergerfs pool degraded on $(hostname)
+From: root@willflix.org
+
+One or more drives in the mergerfs pool have problems:
+
+$(echo -e "$ERRORS")
+Immediate action required.
+
+Quick diagnostics:
+  df -h /Volumes/Media*
+  dmesg | grep -i error | tail -20
+  sudo smartctl -H /dev/sdX
+EOF
+fi

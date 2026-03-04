@@ -1,0 +1,49 @@
+#!/bin/bash
+# check_snapraid_freshness - independent staleness monitor
+# Alerts if snapraid hasn't synced recently.
+# Run via separate cron entry so it works even if sync cron is broken.
+
+set -euo pipefail
+
+MAX_AGE_DAYS=3
+CONTENT_FILE="/Volumes/MediaB/snapraid.content"
+
+if [ ! -f "$CONTENT_FILE" ]; then
+    cat << EOF | /usr/sbin/sendmail -t || true
+To: wemcdonald@gmail.com
+Subject: CRITICAL: snapraid content file missing on $(hostname)
+From: root@willflix.org
+
+The snapraid content file $CONTENT_FILE does not exist.
+This means snapraid cannot sync or recover data.
+EOF
+    exit 1
+fi
+
+FILE_AGE_DAYS=$(( ($(date +%s) - $(stat -c %Y "$CONTENT_FILE")) / 86400 ))
+
+if [ "$FILE_AGE_DAYS" -gt "$MAX_AGE_DAYS" ]; then
+    # Also check if snapraid is currently running (might just be slow)
+    SNAPRAID_RUNNING=$(pgrep -c snapraid || true)
+    RUNNING_NOTE=""
+    if [ "$SNAPRAID_RUNNING" -gt 0 ]; then
+        RUNNING_NOTE="Note: snapraid is currently running ($(pgrep -a snapraid | head -1))"
+    fi
+
+    cat << EOF | /usr/sbin/sendmail -t || true
+To: wemcdonald@gmail.com
+Subject: WARNING: snapraid sync is ${FILE_AGE_DAYS} days stale on $(hostname)
+From: root@willflix.org
+
+The snapraid content file hasn't been updated in $FILE_AGE_DAYS days.
+Last modified: $(stat -c %y "$CONTENT_FILE")
+Threshold: $MAX_AGE_DAYS days
+$RUNNING_NOTE
+
+Check if snapraid cron is running:
+  ps aux | grep snapraid
+
+Check the log:
+  tail -50 /var/log/snapraid-daily.log
+EOF
+fi

@@ -1,0 +1,48 @@
+#!/bin/bash
+# snapraid_daily - daily sync with timeout and alerting
+# MediaJ post-mortem fix: timeouts prevent indefinite hangs,
+# failures are logged and emailed.
+
+set -euo pipefail
+
+SYNC_TIMEOUT=21600  # 6 hours max for sync
+LOGFILE="/var/log/snapraid-daily.log"
+
+notify_failure() {
+    local msg="$1"
+    echo "$(date): FAILURE: $msg" >> "$LOGFILE"
+    cat << EOF | /usr/sbin/sendmail -t || true
+To: wemcdonald@gmail.com
+Subject: ALERT: snapraid daily failed on $(hostname)
+From: root@willflix.org
+
+$msg
+
+Check the log:
+  tail -50 $LOGFILE
+  ps aux | grep snapraid
+EOF
+}
+
+echo "$(date): Starting snapraid daily" >> "$LOGFILE"
+
+# check_for_deletes (has its own 1hr timeout)
+if ! /home/will/bin/cron/check_for_deletes >> "$LOGFILE" 2>&1; then
+    notify_failure "check_for_deletes failed or timed out"
+    exit 1
+fi
+
+echo "$(date): check_for_deletes passed, starting sync" >> "$LOGFILE"
+
+# sync with timeout
+if ! timeout "$SYNC_TIMEOUT" /usr/local/bin/snapraid --force-zero sync >> "$LOGFILE" 2>&1; then
+    EXIT_CODE=$?
+    if [ "$EXIT_CODE" -eq 124 ]; then
+        notify_failure "snapraid sync timed out after ${SYNC_TIMEOUT}s"
+    else
+        notify_failure "snapraid sync failed with exit code $EXIT_CODE"
+    fi
+    exit 1
+fi
+
+echo "$(date): snapraid daily completed successfully" >> "$LOGFILE"

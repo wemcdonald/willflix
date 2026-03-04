@@ -1,0 +1,12 @@
+#!/bin/bash
+
+for drive in /Volumes/Media?; do
+  for media in TV Movies KidsTV KidsMovies Stand-Up Audiobooks Comics TV4K Movies4K 3DMovies; do
+    path=$drive/$media
+
+    if [[ -d "$path" ]]; then
+  	  chown -R will:plex $path
+  	  chmod -R uog+rX,ug+w $path
+    fi
+  done
+done

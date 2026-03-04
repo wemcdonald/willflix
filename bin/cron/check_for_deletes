@@ -1,0 +1,33 @@
+#!/bin/bash
+# check_for_deletes - safety check before snapraid sync
+# Prevents sync if unexpected mass deletes detected.
+# Has timeout to prevent hanging on I/O errors (MediaJ post-mortem fix).
+
+set -euo pipefail
+
+TIMEOUT=3600  # 1 hour max for diff
+IGNORE_PATTERN="^removed (Backups|Plex)"
+
+DIFF_OUTPUT=$(timeout "$TIMEOUT" snapraid diff 2>&1) || {
+    EXIT_CODE=$?
+    if [ "$EXIT_CODE" -eq 124 ]; then
+        echo "snapraid diff timed out after ${TIMEOUT}s — possible drive I/O issue" >&2
+    else
+        echo "snapraid diff failed with exit code $EXIT_CODE" >&2
+        echo "$DIFF_OUTPUT" >&2
+    fi
+    exit 1
+}
+
+# Check for unexpected deletes (replaces old Ruby version)
+DELETED_LINES=$(echo "$DIFF_OUTPUT" | grep "^removed " | grep -v -E "$IGNORE_PATTERN" || true)
+DELETED_COUNT=0
+if [ -n "$DELETED_LINES" ]; then
+    DELETED_COUNT=$(echo "$DELETED_LINES" | wc -l)
+fi
+
+if [ "$DELETED_COUNT" -gt 0 ]; then
+    echo "$DELETED_COUNT unexpected deletes found:" >&2
+    echo "$DELETED_LINES" >&2
+    exit 1
+fi

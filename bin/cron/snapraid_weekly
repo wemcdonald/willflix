@@ -1,0 +1,30 @@
+#!/bin/bash
+# snapraid_weekly - daily sync + scrub
+# Scrub validates parity data integrity.
+
+set -euo pipefail
+
+SCRUB_TIMEOUT=43200  # 12 hours max for scrub
+LOGFILE="/var/log/snapraid-daily.log"
+
+/home/will/bin/cron/snapraid_daily
+
+echo "$(date): Starting snapraid scrub" >> "$LOGFILE"
+
+if ! timeout "$SCRUB_TIMEOUT" /usr/local/bin/snapraid scrub >> "$LOGFILE" 2>&1; then
+    EXIT_CODE=$?
+    echo "$(date): snapraid scrub failed (exit $EXIT_CODE)" >> "$LOGFILE"
+    cat << EOF | /usr/sbin/sendmail -t || true
+To: wemcdonald@gmail.com
+Subject: ALERT: snapraid scrub failed on $(hostname)
+From: root@willflix.org
+
+snapraid scrub failed with exit code $EXIT_CODE.
+
+Check the log:
+  tail -50 $LOGFILE
+EOF
+    exit 1
+fi
+
+echo "$(date): snapraid scrub completed successfully" >> "$LOGFILE"
