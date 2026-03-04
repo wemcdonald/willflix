@@ -4,6 +4,9 @@
 
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+NOTIFY="$(cd "$SCRIPT_DIR/.." && pwd)/willflix-notify"
+
 SCRUB_TIMEOUT=43200  # 12 hours max for scrub
 LOGFILE="/var/log/snapraid-daily.log"
 
@@ -14,16 +17,12 @@ echo "$(date): Starting snapraid scrub" >> "$LOGFILE"
 if ! timeout "$SCRUB_TIMEOUT" /usr/local/bin/snapraid scrub >> "$LOGFILE" 2>&1; then
     EXIT_CODE=$?
     echo "$(date): snapraid scrub failed (exit $EXIT_CODE)" >> "$LOGFILE"
-    cat << EOF | /usr/sbin/sendmail -t || true
-To: wemcdonald@gmail.com
-Subject: ALERT: snapraid scrub failed on $(hostname)
-From: root@willflix.org
-
-snapraid scrub failed with exit code $EXIT_CODE.
+    "$NOTIFY" --severity CRITICAL --key "snapraid-weekly-fail" \
+        --subject "snapraid scrub failed on $(hostname)" \
+        --body "snapraid scrub failed with exit code $EXIT_CODE.
 
 Check the log:
-  tail -50 $LOGFILE
-EOF
+  tail -50 $LOGFILE"
     exit 1
 fi
 
