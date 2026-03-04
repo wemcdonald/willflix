@@ -1,0 +1,74 @@
+#!/bin/bash
+# willflix-heartbeat — weekly channel test + daily monitor freshness checks.
+#
+# Usage:
+#   willflix-heartbeat --full     # Sunday: test both channels + freshness + watchdog
+#   willflix-heartbeat --silent   # Mon-Sat: freshness + watchdog only, alert on failures
+#
+# Cron:
+#   0 9 * * 0   /home/will/bin/cron/willflix-heartbeat --full
+#   0 9 * * 1-6 /home/will/bin/cron/willflix-heartbeat --silent
+
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+NOTIFY="$(cd "$SCRIPT_DIR/.." && pwd)/willflix-notify"
+
+MODE="${1:---silent}"
+
+# Load config
+CONFIG_FILE="${HOME}/.config/willflix-notify/config"
+# shellcheck source=/dev/null
+source "$CONFIG_FILE"
+
+MONITOR_FRESHNESS_DIR="${MONITOR_FRESHNESS_DIR:-/var/tmp/willflix-monitors}"
+
+# --- Channel test (--full only) ---
+
+if [[ "$MODE" == "--full" ]]; then
+    "$NOTIFY" --severity META --key "heartbeat-weekly" \
+        --subject "lafayette weekly heartbeat" \
+        --body "$(hostname) is alive. Both notification channels working. $(date)"
+fi
+
+# --- Monitor freshness checks ---
+
+# Each entry: "script_name max_age_minutes"
+MONITORS=(
+    "check_mergerfs_health 45"
+    "check_snapraid_freshness 2880"
+    "snapraid_daily 4320"
+)
+
+STALE=""
+for entry in "${MONITORS[@]}"; do
+    name="${entry%% *}"
+    max_age_min="${entry##* }"
+    stamp="${MONITOR_FRESHNESS_DIR}/${name}"
+
+    if [[ ! -f "$stamp" ]]; then
+        STALE="${STALE}  ${name}: never ran (no timestamp file)\n"
+        continue
+    fi
+
+    age_min=$(( ($(date +%s) - $(stat -c %Y "$stamp")) / 60 ))
+    if [[ "$age_min" -gt "$max_age_min" ]]; then
+        STALE="${STALE}  ${name}: last ran ${age_min}min ago (threshold: ${max_age_min}min)\n"
+    fi
+done
+
+if [[ -n "$STALE" ]]; then
+    "$NOTIFY" --severity WARNING --key "monitor-stale" \
+        --subject "Monitor freshness check failed on $(hostname)" \
+        --body "$(echo -e "The following monitors are stale:\n\n${STALE}\nCheck that cron jobs are running:\n  sudo crontab -l\n  journalctl -u cron --since '1 hour ago'")"
+fi
+
+# --- External watchdog ping ---
+
+if [[ -n "${UPTIMEROBOT_HEARTBEAT_URL:-}" ]]; then
+    curl -fsS --max-time 10 "$UPTIMEROBOT_HEARTBEAT_URL" >/dev/null 2>&1 || {
+        "$NOTIFY" --severity WARNING --key "watchdog-ping-fail" \
+            --subject "UptimeRobot ping failed on $(hostname)" \
+            --body "Failed to ping UptimeRobot heartbeat URL. Check network connectivity."
+    }
+fi
