@@ -65,7 +65,7 @@ services:
       RESTIC_COMPRESSION: max
       RESTIC_PACK_SIZE: 64
       RESTIC_BACKUP_ARGS: >-
-        --exclude /docker/.git
+        --exclude /willflix/.git
         --exclude /srv/mysql/data
         --exclude *.gz
         --no-scan
@@ -102,8 +102,8 @@ services:
       - "443:443"
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
-      - /docker/appdata/letsencrypt:/letsencrypt
-      - /docker/config:/config
+      - /willflix/docker/appdata/letsencrypt:/letsencrypt
+      - /willflix/docker:/config
     networks:
       - traefik_public
 
@@ -112,7 +112,7 @@ services:
     command: server
     restart: unless-stopped
     env_file:
-      - /docker/config/secrets/authentik_env
+      - /willflix/secrets/authentik_env
     environment:
       - AUTHENTIK_EMAIL__HOST=smtp-relay
       - AUTHENTIK_EMAIL__PORT=25
@@ -126,9 +126,9 @@ services:
         #- AUTHENTIK_DISABLE_SESSION_EXPIRY_REFRESH=false
       - AUTHENTIK_COOKIE_DOMAIN=.willflix.org
     volumes:
-      - /docker/appdata/authentik/certs:/certs
-      - /docker/appdata/authentik/media:/media
-      - /docker/appdata/authentik/templates:/templates
+      - /willflix/docker/appdata/authentik/certs:/certs
+      - /willflix/docker/appdata/authentik/media:/media
+      - /willflix/docker/appdata/authentik/templates:/templates
     #env_file:
     #  - .env
     ports:
@@ -156,7 +156,7 @@ services:
     user: root
     restart: unless-stopped
     env_file:
-      - /docker/config/secrets/authentik_env
+      - /willflix/secrets/authentik_env
     environment:
       - AUTHENTIK_EMAIL__HOST=smtp-relay
       - AUTHENTIK_EMAIL__PORT=25
@@ -165,9 +165,9 @@ services:
       - AUTHENTIK_EMAIL__FROM=noreply@willflix.org
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
-      - /docker/appdata/authentik/certs:/certs
-      - /docker/appdata/authentik/media:/media
-      - /docker/appdata/authentik/templates:/templates
+      - /willflix/docker/appdata/authentik/certs:/certs
+      - /willflix/docker/appdata/authentik/media:/media
+      - /willflix/docker/appdata/authentik/templates:/templates
     #env_file:
     #  - .env
     depends_on:
@@ -245,7 +245,7 @@ services:
       - WEBUI_PORT=8967
       - TORRENTING_PORT=6881
     volumes:
-      - /docker/appdata/qBittorrent:/config/qBittorrent
+      - /willflix/docker/appdata/qBittorrent:/config/qBittorrent
       - /Volumes/Media:/Volumes/Media
     depends_on:
       - vpn
@@ -260,7 +260,7 @@ services:
 #    ports:
 #      - 5900:5900
 #    volumes:
-#      - /docker/appdata/vnc:/home/will
+#      - /willflix/docker/appdata/vnc:/home/will
 #      - /Volumes/Media:/Volumes/Media
 #    secrets:
 #      - vnc_password
@@ -285,7 +285,7 @@ services:
       - 25:25
     restart: unless-stopped
     volumes:
-      - /docker/appdata/smtp-relay/logs:/var/log
+      - /willflix/docker/appdata/smtp-relay/logs:/var/log
     networks:
       - traefik_public
       - default
@@ -296,7 +296,7 @@ services:
     ports:
       - 127.0.0.1:6379:6379
     volumes:
-      - /docker/appdata/redis:/data
+      - /willflix/docker/appdata/redis:/data
     command: redis-server --appendonly yes # Example: enable AOF persistence
     #environment:
       #REDIS_PASSWORD: your_strong_password # Set a password for Redis
@@ -317,7 +317,7 @@ services:
     ports:
       - 127.0.0.1:5432:5432
     volumes:
-      - /docker/appdata/postgres/data:/var/lib/postgresql/data
+      - /willflix/docker/appdata/postgres/data:/var/lib/postgresql/data
     secrets:
       - postgres_password
     environment:
@@ -340,7 +340,7 @@ services:
       - PGID=129
       - TZ=America/Los_Angeles  # Update to your timezone
     volumes:
-      - /docker/appdata/sonarr:/config
+      - /willflix/docker/appdata/sonarr:/config
       - /Volumes/Media:/Volumes/Media  # Update paths
     ports:
       - 8989:8989
@@ -363,7 +363,7 @@ services:
       - PGID=129  
       - TZ=America/Los_Angeles
     volumes:
-      - /docker/appdata/radarr:/config
+      - /willflix/docker/appdata/radarr:/config
       - /Volumes/Media:/Volumes/Media
     ports:
       - 7878:7878
@@ -386,7 +386,7 @@ services:
       - PGID=129
       - TZ=America/Los_Angeles
     volumes:
-      - /docker/appdata/lidarr:/config
+      - /willflix/docker/appdata/lidarr:/config
       - /Volumes/Media:/Volumes/Media
     ports:
       - 8686:8686
@@ -409,7 +409,7 @@ services:
       - PGID=129
       - TZ=America/Los_Angeles
     volumes:
-      - /docker/appdata/prowlarr:/config
+      - /willflix/docker/appdata/prowlarr:/config
     ports:
       - 9696:9696
     restart: unless-stopped
@@ -431,7 +431,7 @@ services:
       - PGID=129
       - TZ=America/Los_Angeles
     volumes:
-      - /docker/appdata/lazylibrarian:/config
+      - /willflix/docker/appdata/lazylibrarian:/config
       - /Volumes/Media:/Volumes/Media
     ports:
       - 5299:5299
@@ -454,13 +454,13 @@ services:
       - PGID=998
       - TZ=America/Los_Angeles
     env_file:
-      - /docker/config/secrets/homarr_env
+      - /willflix/secrets/homarr_env
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
-      - /docker/appdata/homarr/configs:/app/data/configs
-      - /docker/appdata/homarr/icons:/app/public/icons
-      - /docker/appdata/homarr/data:/data
-      - /docker/appdata/homarr/data:/appdata
+      - /willflix/docker/appdata/homarr/configs:/app/data/configs
+      - /willflix/docker/appdata/homarr/icons:/app/public/icons
+      - /willflix/docker/appdata/homarr/data:/data
+      - /willflix/docker/appdata/homarr/data:/appdata
     ports:
       - 7575:7575
     restart: unless-stopped
@@ -482,7 +482,7 @@ services:
       - PGID=129
       - TZ=America/Los_Angeles
     volumes:
-      - /docker/appdata/nzbget:/config
+      - /willflix/docker/appdata/nzbget:/config
       - /Volumes/Media:/Volumes/Media
     ports:
       - 6789:6789
@@ -504,7 +504,7 @@ services:
       #- 5900:5900 # VNC access
       #- 3129:3129 # mobile applications and browser extensions
     volumes:
-      - /docker/appdata/jdownloader:/config
+      - /willflix/docker/appdata/jdownloader:/config
       - /Volumes/MediaK/Downloads/jdownload:/download
     labels:
       - "traefik.enable=true"
@@ -523,8 +523,8 @@ services:
       - AUDIOBOOKSHELF_UID=122
       - AUDIOBOOKSHELF_GID=129
     volumes:
-      - /docker/appdata/audiobookshelf/config:/config
-      - /docker/appdata/audiobookshelf/metadata:/metadata
+      - /willflix/docker/appdata/audiobookshelf/config:/config
+      - /willflix/docker/appdata/audiobookshelf/metadata:/metadata
       - /Volumes/Media:/Volumes/Media
     ports:
       - 13378:80
@@ -554,7 +554,7 @@ services:
       - PASSWORD=flyingleap
         #- CLI_ARGS= #optional
     volumes:
-      - /docker/appdata/calibre:/config
+      - /willflix/docker/appdata/calibre:/config
       - /Volumes/Media/Calibre:/books
     ports:
       - 58080:8080
@@ -576,10 +576,10 @@ services:
       - PGID=501
       - TZ=America/Los_Angeles
     volumes:
-      - /docker/appdata/calibre-web-automated/cwa:/config
-      - /docker/appdata/calibre-ingest:/cwa-book-ingest
+      - /willflix/docker/appdata/calibre-web-automated/cwa:/config
+      - /willflix/docker/appdata/calibre-ingest:/cwa-book-ingest
       - /Volumes/Media/Calibre:/calibre-library
-      - /docker/appdata/calibre-web-automated/s6-overlay/s6-rc.d/calibre-content-server:/etc/s6-overlay/s6-rc.d/calibre-content-server
+      - /willflix/docker/appdata/calibre-web-automated/s6-overlay/s6-rc.d/calibre-content-server:/etc/s6-overlay/s6-rc.d/calibre-content-server
     restart: unless-stopped
     ports:
       - 58080:8080
@@ -648,8 +648,8 @@ services:
     depends_on:
       - byparr
     volumes:
-      - /docker/appdata/calibre-ingest:/cwa-book-ingest
-      # - /docker/appdata/calibre-web-automated/app.db:/auth/app.db:ro
+      - /willflix/docker/appdata/calibre-ingest:/cwa-book-ingest
+      # - /willflix/docker/appdata/calibre-web-automated/app.db:/auth/app.db:ro
     ports:
       - 8084:8084
     restart: unless-stopped
@@ -673,7 +673,7 @@ services:
       - TZ=America/Los_Angeles
       - HEALTHBOT_CONFIG=/config/healthbot
     volumes:
-      - /docker/appdata/healthbot/config:/config:ro
+      - /willflix/docker/appdata/healthbot/config:/config:ro
       - /var/run/docker.sock:/var/run/docker.sock:ro
       - /run/systemd:/run/systemd:ro
       - /:/host:ro
@@ -703,7 +703,7 @@ services:
       - redis
       - postgres
     volumes:
-      - /docker/appdata/nextcloud:/var/www/html
+      - /willflix/docker/appdata/nextcloud:/var/www/html
       - /Volumes/Media:/Volumes/Media
     secrets:
       - nextcloud_postgres_password
@@ -728,9 +728,9 @@ services:
     image: nginx:alpine
     container_name: nginx-public
     volumes:
-      - /docker/appdata/nginx-public:/usr/share/nginx/html:ro
+      - /willflix/docker/appdata/nginx-public:/usr/share/nginx/html:ro
       - /home/shostack/code/stanfordopen.github.io:/stanford:ro
-      - /docker/config/nginx-public.conf:/etc/nginx/nginx.conf:ro
+      - /willflix/docker/nginx-public.conf:/etc/nginx/nginx.conf:ro
     labels:
       - "traefik.enable=true"
       - "traefik.http.services.nginx-public.loadbalancer.server.port=80"
@@ -755,7 +755,7 @@ services:
     image: nginx:alpine  
     container_name: nginx-private
     volumes:
-      - /docker/appdata/nginx-private:/usr/share/nginx/html:ro
+      - /willflix/docker/appdata/nginx-private:/usr/share/nginx/html:ro
     labels:
       - "traefik.enable=true"
       - "traefik.http.services.nginx-private.loadbalancer.server.port=80"
@@ -775,7 +775,7 @@ services:
       - PGID=129
       - TZ=America/Los_Angeles
     volumes:
-      - /docker/appdata/tautulli/config:/config
+      - /willflix/docker/appdata/tautulli/config:/config
     ports:
       - 48181:8181
     restart: unless-stopped
@@ -818,9 +818,9 @@ services:
     restart: unless-stopped
     working_dir: /app
     volumes:
-      - /docker/bin:/app/bin:ro
-      - /docker/logs:/app/logs
-      - /docker/config/secrets:/app/secrets:ro
+      - /willflix/bin:/app/bin:ro
+      - /willflix/docker/logs:/app/logs
+      - /willflix/secrets:/app/secrets:ro
     command: >
       sh -c "
         apk add --no-cache bash curl jq python3 &&
@@ -841,7 +841,7 @@ services:
       - PGID=501
       - TZ=America/Los_Angeles
     volumes:
-      - /docker/appdata/ddclient:/config
+      - /willflix/docker/appdata/ddclient:/config
 
   grocerybot:
     build:
@@ -860,7 +860,7 @@ services:
       - OPENAI_API_KEY_FILE=/run/secrets/grocerybot_openai_key
       - OPENAI_MODEL=gpt-5-mini
     volumes:
-      - /docker/appdata/grocerybot:/app/data
+      - /willflix/docker/appdata/grocerybot:/app/data
     ports:
       - 8085:8000
     labels:
@@ -892,8 +892,8 @@ services:
       - SHARE1_USERS=will
     volumes:
       - /Volumes/Media:/data/Media
-      - /docker/appdata/samba:/etc/samba
-      - /docker/appdata/samba/init-users.sh:/etc/cont-init.d/99-init-users.sh:ro
+      - /willflix/docker/appdata/samba:/etc/samba
+      - /willflix/docker/appdata/samba/init-users.sh:/etc/cont-init.d/99-init-users.sh:ro
       - samba_config:/data/config
 
 #  ofelia:
@@ -904,8 +904,8 @@ services:
 #      - /var/run/docker.sock:/var/run/docker.sock:ro
 #      - /etc/localtime:/etc/localtime:ro
 #      - /etc/timezone:/etc/timezone:ro
-#      - /docker/appdata/ofelia/logs:/tmp/logs
-#      - /docker/bin:/scripts:ro
+#      - /willflix/docker/appdata/ofelia/logs:/tmp/logs
+#      - /willflix/bin:/scripts:ro
 #      - /Volumes/Media:/Volumes/Media
 #    environment:
 #      - TZ=America/Los_Angeles
@@ -984,10 +984,10 @@ services:
     # Volume mounts
     volumes:
       # Agent configurations (read-only from appdata)
-      - /docker/appdata/homebot/agents:/app/agents:ro
+      - /willflix/docker/appdata/homebot/agents:/app/agents:ro
       
       # Logs directory (persistent)
-      - /docker/appdata/homebot/logs:/app/logs
+      - /willflix/docker/appdata/homebot/logs:/app/logs
       
       # Session data (persistent)
       - homebot_sessions:/app/sessions
@@ -996,7 +996,7 @@ services:
       - homebot_temp:/app/temp
       
       # Attachments directory
-      - /docker/appdata/homebot/attachments:/app/attachments
+      - /willflix/docker/appdata/homebot/attachments:/app/attachments
     
     # Resource limits
     deploy:
@@ -1030,14 +1030,14 @@ services:
 
   gastown:
     build:
-      context: /docker/appdata/gastown
+      context: /willflix/docker/appdata/gastown
       dockerfile: Dockerfile
     container_name: gastown
     restart: unless-stopped
     environment:
       - NODE_ENV=development
     volumes:
-      - /docker/appdata/gastown:/app
+      - /willflix/docker/appdata/gastown:/app
       - /app/node_modules
       - /app/.next
     labels:
@@ -1052,7 +1052,7 @@ services:
 
   guildmaster:
     build:
-      context: /docker/appdata/guildmaster
+      context: /willflix/docker/appdata/guildmaster
       dockerfile: Dockerfile
     container_name: guildmaster
     restart: unless-stopped
@@ -1079,7 +1079,7 @@ services:
       - "127.0.0.1:5173:5173"
       - "127.0.0.1:3000:3000"
     volumes:
-      - /docker/appdata/guildmaster:/app
+      - /willflix/docker/appdata/guildmaster:/app
     labels:
       - "traefik.enable=true"
       # Frontend service (Vite on port 5173)
@@ -1102,12 +1102,12 @@ services:
 
   health-server:
     build:
-      context: /docker/appdata/health-server
+      context: /willflix/docker/appdata/health-server
       dockerfile: Dockerfile
     container_name: health-server
     restart: unless-stopped
     env_file:
-      - /docker/config/secrets/healthserver_env
+      - /willflix/secrets/healthserver_env
     environment:
       - TZ=America/Los_Angeles
       - SERVER_HOST=0.0.0.0
@@ -1134,7 +1134,7 @@ services:
       - PGID=129
       - TZ=America/Los_Angeles
     volumes:
-      - /docker/appdata/overseerr:/config
+      - /willflix/docker/appdata/overseerr:/config
     ports:
       - 5055:5055
     restart: unless-stopped
@@ -1160,8 +1160,8 @@ services:
       - LD_PRELOAD=/usr/lib/libmimalloc-secure.so.2
       - DEFAULT_ACCOUNT_PERMS=r
     volumes:
-      - /docker/appdata/copyparty:/cfg
-      - /docker/appdata/copyparty/hist:/w/.hist
+      - /willflix/docker/appdata/copyparty:/cfg
+      - /willflix/docker/appdata/copyparty/hist:/w/.hist
       - /Volumes/Media:/mnt/Media
     ports:
       - 3923:3923
