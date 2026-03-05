@@ -1,4 +1,18 @@
+# Application data (container volumes, databases, indexes)
+docker/appdata/
+docker/logs/
+
+# Build artifacts
 *.log
 *.tmp
 *.swp
+*~
+*.pyc
+__pycache__/
+
+# Dependencies
+node_modules/
+
+# OS files
 .DS_Store
+Thumbs.db

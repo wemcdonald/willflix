@@ -1,3 +1,0 @@
-# Encrypt the entire secrets directory with git-crypt
-config/secrets/** filter=git-crypt diff=git-crypt
-config/secrets/.gitattributes !filter !diff
