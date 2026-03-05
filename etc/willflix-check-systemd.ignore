@@ -1,0 +1,9 @@
+# Systemd units to ignore in health checks.
+# One unit name per line. Comments start with #.
+# These are known-legacy or expected failures.
+certbot.service
+courier-imap-ssl.service
+mount-all.service
+nginx.service
+vncserver@1.service
+Volumes-MediaJ.mount
