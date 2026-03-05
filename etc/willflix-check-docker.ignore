@@ -1,0 +1,5 @@
+# Containers to ignore in health checks.
+# One container name per line. Comments start with #.
+# These are intentionally stopped or known-problematic.
+whoami
+confident_agnesi
