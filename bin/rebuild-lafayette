@@ -1,0 +1,489 @@
+#!/bin/bash
+# rebuild-lafayette — guided rebuild of lafayette server from a fresh Ubuntu 22.04 install.
+#
+# Prerequisites:
+#   - Fresh Ubuntu 22.04 install with 'will' user and sudo access
+#   - Network access to GitHub
+#   - SSH key for GitHub (or HTTPS token)
+#   - git-crypt symmetric key file (from LastPass)
+#
+# Usage:
+#   curl/scp this script to the new machine, then:
+#   chmod +x rebuild-lafayette && sudo ./rebuild-lafayette
+#
+# Each stage pauses for confirmation. Answer 'n' to skip a stage.
+
+set -euo pipefail
+
+REPO_URL="git@github.com:wemcdonald/willflix.git"
+REPO_DIR="/willflix"
+COMPOSE_PROJECT="config"
+
+# --- Helpers ---
+
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+RED='\033[0;31m'
+NC='\033[0m'
+
+info()  { echo -e "${GREEN}[✓]${NC} $*"; }
+warn()  { echo -e "${YELLOW}[!]${NC} $*"; }
+err()   { echo -e "${RED}[✗]${NC} $*"; }
+stage() { echo -e "\n${GREEN}═══════════════════════════════════════${NC}"; echo -e "${GREEN}  Stage $1: $2${NC}"; echo -e "${GREEN}═══════════════════════════════════════${NC}\n"; }
+
+confirm() {
+    local prompt="${1:-Proceed?}"
+    read -rp "$prompt [Y/n] " reply
+    [[ -z "$reply" || "$reply" =~ ^[Yy] ]]
+}
+
+check_root() {
+    if [[ $EUID -ne 0 ]]; then
+        err "This script must be run as root (sudo ./rebuild-lafayette)"
+        exit 1
+    fi
+}
+
+# --- Stage 1: Prerequisites ---
+
+stage_1_prerequisites() {
+    stage 1 "Prerequisites"
+
+    # Check Ubuntu version
+    if grep -q 'VERSION_ID="22.04"' /etc/os-release; then
+        info "Ubuntu 22.04 detected"
+    else
+        warn "Expected Ubuntu 22.04, found: $(grep VERSION_ID /etc/os-release)"
+        confirm "Continue anyway?" || exit 1
+    fi
+
+    # Check internet
+    if ping -c1 -W3 github.com &>/dev/null; then
+        info "Internet connectivity OK"
+    else
+        err "Cannot reach github.com — check network"
+        exit 1
+    fi
+
+    # Check sudo
+    info "Running as root"
+
+    # Check for will user
+    if id will &>/dev/null; then
+        info "User 'will' exists"
+    else
+        warn "User 'will' does not exist — creating"
+        adduser --gecos "" will
+        usermod -aG sudo will
+        info "Created user 'will' with sudo"
+    fi
+}
+
+# --- Stage 2: Packages ---
+
+stage_2_packages() {
+    stage 2 "Packages"
+
+    echo "Will install: docker-ce, git-crypt, smartmontools, mergerfs, snapraid,"
+    echo "              jq, htop, tmux, ripgrep, mosh, and other utilities."
+    echo ""
+    confirm || return 0
+
+    apt-get update
+
+    # Docker (official repo)
+    if ! command -v docker &>/dev/null; then
+        info "Installing Docker..."
+        apt-get install -y ca-certificates curl gnupg
+        install -m 0755 -d /etc/apt/keyrings
+        curl -fsSL https://download.docker.com/linux/ubuntu/gpg | gpg --dearmor -o /etc/apt/keyrings/docker.gpg
+        chmod a+r /etc/apt/keyrings/docker.gpg
+        echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu $(. /etc/os-release && echo "$VERSION_CODENAME") stable" > /etc/apt/sources-list.d/docker.list
+        apt-get update
+        apt-get install -y docker-ce docker-ce-cli containerd.io docker-compose-plugin
+        usermod -aG docker will
+        info "Docker installed"
+    else
+        info "Docker already installed"
+    fi
+
+    # Core packages
+    PACKAGES=(
+        git git-crypt smartmontools mergerfs snapraid
+        jq htop tmux ripgrep mosh curl wget
+        python3 python3-yaml
+    )
+    apt-get install -y "${PACKAGES[@]}"
+    info "Core packages installed"
+}
+
+# --- Stage 3: Clone repo ---
+
+stage_3_clone() {
+    stage 3 "Clone repo"
+
+    if [[ -d "$REPO_DIR/.git" ]]; then
+        info "$REPO_DIR already exists, pulling latest"
+        git -C "$REPO_DIR" pull
+    else
+        echo "Will clone $REPO_URL to $REPO_DIR"
+        echo ""
+        echo "Make sure the SSH key for GitHub is available."
+        echo "If using will's SSH key, it should be at ~will/.ssh/id_ed25519"
+        echo "(You can paste it from LastPass now if needed)"
+        echo ""
+        confirm || return 0
+
+        git clone "$REPO_URL" "$REPO_DIR"
+        chown -R will:will "$REPO_DIR"
+        info "Repo cloned to $REPO_DIR"
+    fi
+
+    # Convenience symlinks
+    ln -sfn "$REPO_DIR" /home/will/willflix 2>/dev/null || true
+    ln -sfn "$REPO_DIR/bin/cron" /home/will/bin/cron 2>/dev/null || { mkdir -p /home/will/bin && ln -sfn "$REPO_DIR/bin/cron" /home/will/bin/cron; }
+    info "Convenience symlinks created"
+}
+
+# --- Stage 4: Unlock secrets ---
+
+stage_4_secrets() {
+    stage 4 "Unlock secrets"
+
+    if file "$REPO_DIR/secrets/smtp_password" 2>/dev/null | grep -q 'ASCII'; then
+        info "Secrets already decrypted"
+        return 0
+    fi
+
+    echo "Need the git-crypt symmetric key to decrypt secrets."
+    echo ""
+    echo "To retrieve from LastPass:"
+    echo "  1. Find secure note 'lafayette git-crypt key'"
+    echo "  2. Copy the base64 content"
+    echo "  3. Decode: echo '<base64>' | base64 -d > /tmp/git-crypt-key"
+    echo ""
+    read -rp "Path to git-crypt key file [/tmp/git-crypt-key]: " keyfile
+    keyfile="${keyfile:-/tmp/git-crypt-key}"
+
+    if [[ ! -f "$keyfile" ]]; then
+        err "Key file not found: $keyfile"
+        return 1
+    fi
+
+    git -C "$REPO_DIR" crypt unlock "$keyfile"
+    info "Secrets decrypted"
+
+    echo ""
+    warn "Remember to delete the key file: rm $keyfile"
+}
+
+# --- Stage 5: Mount drives ---
+
+stage_5_mounts() {
+    stage 5 "Mount drives"
+
+    echo "Expected drives from etc/fstab:"
+    echo ""
+
+    # Show expected vs detected
+    local expected_labels
+    expected_labels=$(grep '^LABEL=' "$REPO_DIR/etc/fstab" | awk '{print $1}' | sed 's/LABEL=//')
+
+    local missing=0
+    for label in $expected_labels; do
+        device=$(blkid -L "$label" 2>/dev/null || true)
+        if [[ -n "$device" ]]; then
+            info "$label → $device"
+        else
+            warn "$label → NOT FOUND"
+            missing=$((missing + 1))
+        fi
+    done
+
+    if [[ $missing -gt 0 ]]; then
+        echo ""
+        warn "$missing drive(s) not found. This is expected if rebuilding during a drive failure."
+    fi
+
+    echo ""
+    echo "Will add fstab entries and mount available drives."
+    confirm || return 0
+
+    # Create mount points
+    for label in $expected_labels; do
+        mount_point=$(grep "LABEL=$label" "$REPO_DIR/etc/fstab" | awk '{print $2}')
+        mkdir -p "$mount_point"
+    done
+    mkdir -p /Volumes/Media
+    mkdir -p /snapraid
+
+    # Add fstab entries (skip if already present)
+    while IFS= read -r line; do
+        [[ "$line" =~ ^# ]] && continue
+        [[ -z "$line" ]] && continue
+        # Extract the mount point to check for duplicates
+        mp=$(echo "$line" | awk '{print $2}')
+        if ! grep -q "$mp" /etc/fstab 2>/dev/null; then
+            echo "$line" >> /etc/fstab
+        fi
+    done < <(grep -E '^LABEL=Media|^/Volumes/Media\[|^LABEL=Bonus' "$REPO_DIR/etc/fstab")
+
+    mount -a 2>/dev/null || true
+    info "Drives mounted (check output above for errors)"
+
+    # Show what's mounted
+    echo ""
+    df -h /Volumes/Media* /Volumes/Bonus* 2>/dev/null | head -20 || true
+}
+
+# --- Stage 6: System configs ---
+
+stage_6_configs() {
+    stage 6 "System configs"
+
+    echo "Will install:"
+    echo "  - smartd.conf → /etc/smartd.conf"
+    echo "  - snapraid.conf → /etc/snapraid.conf"
+    echo "  - Root crontab from etc/root-crontab"
+    echo "  - Systemd units (symlinked from etc/systemd/)"
+    echo "  - Sendmail wrapper (symlinked from bin/sendmail-system)"
+    echo ""
+    confirm || return 0
+
+    # smartd
+    cp "$REPO_DIR/etc/smartd.conf" /etc/smartd.conf
+    systemctl restart smartd 2>/dev/null || true
+    info "smartd.conf installed"
+
+    # snapraid
+    cp "$REPO_DIR/etc/snapraid.conf" /etc/snapraid.conf
+    info "snapraid.conf installed"
+
+    # Crontab
+    crontab "$REPO_DIR/etc/root-crontab"
+    info "Root crontab installed"
+
+    # Systemd units
+    local count=0
+    for unit in "$REPO_DIR/etc/systemd/"*.service; do
+        name=$(basename "$unit")
+        ln -sfn "$unit" "/etc/systemd/system/$name"
+        count=$((count + 1))
+    done
+    systemctl daemon-reload
+    info "$count systemd units symlinked"
+
+    # Sendmail wrapper
+    ln -sfn "$REPO_DIR/bin/sendmail-system" /usr/sbin/sendmail
+    info "sendmail → $REPO_DIR/bin/sendmail-system"
+
+    # Docker compat symlink
+    ln -sfn "$REPO_DIR/docker" /docker
+    info "/docker → $REPO_DIR/docker"
+
+    # Compose compat (config/ dir with symlinks)
+    mkdir -p "$REPO_DIR/docker/config"
+    ln -sfn "$REPO_DIR/docker/compose.yml" "$REPO_DIR/docker/config/docker-compose.yml"
+    ln -sfn "$REPO_DIR/secrets" "$REPO_DIR/docker/config/secrets"
+    info "Docker compat symlinks created"
+
+    # Monitor dirs
+    install -d -m 1777 /var/tmp/willflix-monitors
+    install -d -m 1777 /var/tmp/willflix-notify
+    info "Monitor/dedup directories created"
+}
+
+# --- Stage 7: Docker services ---
+
+stage_7_docker() {
+    stage 7 "Docker services"
+
+    echo "Will start all Docker services via compose."
+    echo "This may take a while for image pulls on a fresh install."
+    echo ""
+    confirm || return 0
+
+    cd "$REPO_DIR/docker"
+    docker compose -p "$COMPOSE_PROJECT" up -d
+    info "Docker services started"
+
+    echo ""
+    echo "Container status:"
+    docker ps --format 'table {{.Names}}\t{{.Status}}' | head -45
+}
+
+# --- Stage 8: Restore postgres ---
+
+stage_8_postgres() {
+    stage 8 "Restore PostgreSQL"
+
+    local dump_dir="/Volumes/Bonus1/postgres-backup"
+
+    if [[ ! -d "$dump_dir" ]]; then
+        warn "Dump directory not found: $dump_dir"
+        echo "If Bonus1 is not mounted, you can restore from restic later."
+        echo "See docs/disaster-recovery.md for instructions."
+        return 0
+    fi
+
+    echo "Available dumps:"
+    ls -lh "$dump_dir"/*.sql.gz 2>/dev/null | tail -10
+    echo ""
+
+    # Find latest date
+    local latest_date
+    latest_date=$(ls "$dump_dir"/globals-*.sql.gz 2>/dev/null | sort | tail -1 | grep -oP '\d{4}-\d{2}-\d{2}')
+
+    if [[ -z "$latest_date" ]]; then
+        warn "No dumps found in $dump_dir"
+        return 0
+    fi
+
+    echo "Will restore dumps from: $latest_date"
+    confirm || return 0
+
+    # Wait for postgres to be ready
+    echo "Waiting for postgres to be ready..."
+    local tries=0
+    while ! docker exec config-postgres-1 pg_isready -U will &>/dev/null; do
+        tries=$((tries + 1))
+        if [[ $tries -gt 30 ]]; then
+            err "Postgres not ready after 30 seconds"
+            return 1
+        fi
+        sleep 1
+    done
+    info "Postgres is ready"
+
+    # Restore globals first
+    local globals="$dump_dir/globals-${latest_date}.sql.gz"
+    if [[ -f "$globals" ]]; then
+        gunzip -c "$globals" | docker exec -i config-postgres-1 psql -U will postgres 2>&1 | tail -3
+        info "Globals restored"
+    fi
+
+    # Restore each database
+    for dump in "$dump_dir"/*-"${latest_date}".sql.gz; do
+        local dbname
+        dbname=$(basename "$dump" | sed "s/-${latest_date}.sql.gz//")
+        [[ "$dbname" == "globals" ]] && continue
+
+        echo "Restoring $dbname..."
+        # Create database if it doesn't exist
+        docker exec config-postgres-1 psql -U will -tc "SELECT 1 FROM pg_database WHERE datname='$dbname'" | grep -q 1 || \
+            docker exec config-postgres-1 createdb -U will "$dbname" 2>/dev/null || true
+        gunzip -c "$dump" | docker exec -i config-postgres-1 psql -U will "$dbname" 2>&1 | tail -3
+        info "$dbname restored"
+    done
+}
+
+# --- Stage 9: Verify ---
+
+stage_9_verify() {
+    stage 9 "Verify"
+
+    local issues=0
+
+    echo "Checking system health..."
+    echo ""
+
+    # Drives
+    if mountpoint -q /Volumes/Media 2>/dev/null; then
+        info "MergerFS pool mounted"
+    else
+        err "MergerFS pool NOT mounted"
+        issues=$((issues + 1))
+    fi
+
+    # Docker
+    local running
+    running=$(docker ps -q | wc -l)
+    if [[ $running -gt 30 ]]; then
+        info "$running Docker containers running"
+    else
+        warn "Only $running Docker containers running (expected ~38)"
+        issues=$((issues + 1))
+    fi
+
+    # Unhealthy containers
+    local unhealthy
+    unhealthy=$(docker ps --filter health=unhealthy --format '{{.Names}}' 2>/dev/null)
+    if [[ -z "$unhealthy" ]]; then
+        info "No unhealthy containers"
+    else
+        warn "Unhealthy containers: $unhealthy"
+        issues=$((issues + 1))
+    fi
+
+    # Secrets decrypted
+    if file "$REPO_DIR/secrets/smtp_password" 2>/dev/null | grep -q 'ASCII'; then
+        info "Secrets are decrypted"
+    else
+        err "Secrets are NOT decrypted"
+        issues=$((issues + 1))
+    fi
+
+    # Crontab
+    if crontab -l 2>/dev/null | grep -q willflix; then
+        info "Root crontab installed"
+    else
+        err "Root crontab not installed"
+        issues=$((issues + 1))
+    fi
+
+    # Backups directory
+    if [[ -d /Volumes/Bonus1/postgres-backup ]]; then
+        info "Postgres backup directory exists"
+    else
+        warn "Postgres backup directory not found"
+        issues=$((issues + 1))
+    fi
+
+    # Alerting test
+    echo ""
+    if confirm "Send a test notification to verify alerting?"; then
+        "$REPO_DIR/bin/willflix-notify" --test --subject "lafayette rebuild complete" && \
+            info "Test notification sent" || warn "Notification test failed"
+    fi
+
+    echo ""
+    echo "═══════════════════════════════════════"
+    if [[ $issues -eq 0 ]]; then
+        info "All checks passed. Rebuild complete!"
+    else
+        warn "$issues issue(s) found. Review the warnings above."
+    fi
+    echo "═══════════════════════════════════════"
+}
+
+# --- Main ---
+
+main() {
+    echo ""
+    echo "╔═══════════════════════════════════════╗"
+    echo "║     lafayette server rebuild script    ║"
+    echo "╠═══════════════════════════════════════╣"
+    echo "║  Guides you through rebuilding from a  ║"
+    echo "║  fresh Ubuntu 22.04 install.           ║"
+    echo "║                                        ║"
+    echo "║  You'll need:                          ║"
+    echo "║  • SSH key for GitHub                  ║"
+    echo "║  • git-crypt key (from LastPass)       ║"
+    echo "║  • Network access                      ║"
+    echo "╚═══════════════════════════════════════╝"
+    echo ""
+
+    check_root
+
+    stage_1_prerequisites
+    stage_2_packages
+    stage_3_clone
+    stage_4_secrets
+    stage_5_mounts
+    stage_6_configs
+    stage_7_docker
+    stage_8_postgres
+    stage_9_verify
+}
+
+main "$@"
