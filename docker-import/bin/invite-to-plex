@@ -1,0 +1,101 @@
+#!/bin/bash
+
+# Plex User Invitation Script
+# Usage: invite-to-plex email@example.com
+
+set -e
+
+# Check if email argument provided
+if [ $# -eq 0 ]; then
+    echo "Usage: $0 <email@example.com>"
+    echo "Example: $0 user@gmail.com"
+    exit 1
+fi
+
+EMAIL="$1"
+
+# Validate email format (basic)
+if [[ ! "$EMAIL" =~ ^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$ ]]; then
+    echo "Error: Invalid email format"
+    exit 1
+fi
+
+# Source environment variables
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+# Check if running in webhook container
+if [ -f "/app/secrets/plex_api_env" ]; then
+    ENV_FILE="/app/secrets/plex_api_env"
+else
+    ENV_FILE="$SCRIPT_DIR/../config/secrets/plex_api_env"
+fi
+
+if [ ! -f "$ENV_FILE" ]; then
+    echo "Error: Environment file not found at $ENV_FILE"
+    exit 1
+fi
+
+source "$ENV_FILE"
+
+# Check required variables
+if [ -z "$PLEX_TOKEN" ] || [ -z "$MACHINE_IDENTIFIER" ] || [ -z "$SECTION_IDS" ]; then
+    echo "Error: Missing required environment variables (PLEX_TOKEN, MACHINE_IDENTIFIER, SECTION_IDS)"
+    exit 1
+fi
+
+echo "Inviting $EMAIL to Plex server..."
+
+# Convert comma-separated section IDs to JSON array
+SECTION_ARRAY=$(echo "$SECTION_IDS" | sed 's/,/,/g' | sed 's/^/[/' | sed 's/$/]/')
+
+# Create invitation via Plex API
+RESPONSE=$(curl -s -w "%{http_code}" -X POST "https://plex.tv/api/v2/shared_servers" \
+  -H "X-Plex-Token: $PLEX_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d "{
+    \"server_id\": \"$MACHINE_IDENTIFIER\",
+    \"shared_server\": {
+      \"invited_email\": \"$EMAIL\",
+      \"library_section_ids\": $SECTION_ARRAY,
+      \"settings\": {
+        \"allowSync\": true,
+        \"allowCameraUpload\": false,
+        \"allowChannels\": false,
+        \"filterMovies\": \"\",
+        \"filterTelevision\": \"\",
+        \"filterMusic\": \"\"
+      }
+    }
+  }")
+
+# Extract HTTP status code (last 3 characters)
+HTTP_CODE="${RESPONSE: -3}"
+RESPONSE_BODY="${RESPONSE%???}"
+
+# Check response
+case "$HTTP_CODE" in
+    "200"|"201")
+        echo "✅ Successfully invited $EMAIL to Plex server"
+        echo "   - Access to all libraries granted"
+        echo "   - Sync/download enabled"
+        ;;
+    "400")
+        echo "❌ Bad Request - Check email format or server configuration"
+        [ -n "$RESPONSE_BODY" ] && echo "Response: $RESPONSE_BODY"
+        exit 1
+        ;;
+    "401")
+        echo "❌ Unauthorized - Check your Plex token"
+        exit 1
+        ;;
+    "422")
+        echo "❌ User may already be invited or email invalid"
+        [ -n "$RESPONSE_BODY" ] && echo "Response: $RESPONSE_BODY"
+        exit 1
+        ;;
+    *)
+        echo "❌ Unexpected response (HTTP $HTTP_CODE)"
+        [ -n "$RESPONSE_BODY" ] && echo "Response: $RESPONSE_BODY"
+        exit 1
+        ;;
+esac

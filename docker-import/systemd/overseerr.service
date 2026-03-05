@@ -1,0 +1,15 @@
+[Unit]
+Description=Overseerr
+Requires=docker.service
+After=docker.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=true
+WorkingDirectory=/docker/config
+ExecStart=/usr/bin/docker compose up -d overseerr
+ExecStop=/usr/bin/docker compose down overseerr
+TimeoutStartSec=0
+
+[Install]
+WantedBy=multi-user.target

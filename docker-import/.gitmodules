@@ -1,0 +1,3 @@
+[submodule "appdata/opencode/superpowers"]
+	path = appdata/opencode/superpowers
+	url = https://github.com/obra/superpowers.git

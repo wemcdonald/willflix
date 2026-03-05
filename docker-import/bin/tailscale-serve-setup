@@ -1,0 +1,103 @@
+#!/bin/bash
+set -euo pipefail
+
+# Tailscale Serve Configuration
+# ==============================
+# This script is the source of truth for all tailscale serve entries.
+# It configures HTTPS/TCP proxies on the tailnet for localhost-bound services.
+#
+# Services bound to 127.0.0.1 that need tailnet access get an entry here.
+# Traefik handles public HTTPS routing — this is for direct tailnet access only.
+#
+# Usage: sudo tailscale-serve-setup [--dry-run]
+#
+# After editing, run this script and commit the change.
+
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+NC='\033[0m'
+
+DRY_RUN=false
+if [[ "${1:-}" == "--dry-run" ]]; then
+    DRY_RUN=true
+    echo -e "${YELLOW}[DRY RUN]${NC} Would execute the following commands:"
+    echo
+fi
+
+run() {
+    if $DRY_RUN; then
+        echo "  $*"
+    else
+        "$@"
+    fi
+}
+
+# ─── Reset existing entries ──────────────────────────────────────────
+echo -e "${YELLOW}Resetting existing tailscale serve entries...${NC}"
+run tailscale serve reset
+
+# ─── Development & AI ────────────────────────────────────────────────
+
+# OpenCode API (serve) — port 3456, bound to 127.0.0.1
+# Used by: mobile app, CLI clients over tailnet
+echo -e "${GREEN}[+]${NC} OpenCode API → :3456"
+run tailscale serve --bg --https=3456 http://127.0.0.1:3456
+
+# OpenCode Web UI — port 4096, bound to 0.0.0.0 (Traefik needs it)
+# Tailnet entry provides direct access without Authentik
+echo -e "${GREEN}[+]${NC} OpenCode Web → :4096"
+run tailscale serve --bg --https=4096 http://127.0.0.1:4096
+
+# OpenClaw Gateway — port 18789, Docker service bound to 127.0.0.1
+echo -e "${GREEN}[+]${NC} OpenClaw Gateway → :18789"
+run tailscale serve --bg --https=18789 http://127.0.0.1:18789
+
+# Guildmaster Vite Dev — port 5173, Docker service bound to 127.0.0.1
+echo -e "${GREEN}[+]${NC} Guildmaster Vite → :5173"
+run tailscale serve --bg --https=5173 http://127.0.0.1:5173
+
+# ─── Databases ───────────────────────────────────────────────────────
+
+# PostgreSQL — port 5432, Docker service bound to 127.0.0.1
+echo -e "${GREEN}[+]${NC} PostgreSQL → :5432"
+run tailscale serve --bg --tcp=5432 tcp://127.0.0.1:5432
+
+# Redis — port 6379, Docker service bound to 127.0.0.1
+echo -e "${GREEN}[+]${NC} Redis → :6379"
+run tailscale serve --bg --tcp=6379 tcp://127.0.0.1:6379
+
+# Adminer — port 48080, Docker service bound to 127.0.0.1
+echo -e "${GREEN}[+]${NC} Adminer → :48080"
+run tailscale serve --bg --https=48080 http://127.0.0.1:48080
+
+# ─── Remote Access ───────────────────────────────────────────────────
+
+# VNC (TigerVNC) — port 5901, bound to localhost via tigervnc.conf
+echo -e "${GREEN}[+]${NC} VNC → :5901"
+run tailscale serve --bg --tcp=5901 tcp://127.0.0.1:5901
+
+# XRDP — port 3389, bound to 127.0.0.1 via xrdp.ini
+echo -e "${GREEN}[+]${NC} XRDP → :3389"
+run tailscale serve --bg --tcp=3389 tcp://127.0.0.1:3389
+
+# EternalTerminal — port 2022, bound to 127.0.0.1 via et.cfg
+echo -e "${GREEN}[+]${NC} EternalTerminal → :2022"
+run tailscale serve --bg --tcp=2022 tcp://127.0.0.1:2022
+
+# ─── Other Services ──────────────────────────────────────────────────
+
+# ntfy — port 6839, bound to 127.0.0.1 via server.yml
+echo -e "${GREEN}[+]${NC} ntfy → :6839"
+run tailscale serve --bg --https=6839 http://127.0.0.1:6839
+
+# Transmission RPC — port 9091, bound to 127.0.0.1 via settings.json
+echo -e "${GREEN}[+]${NC} Transmission → :9091"
+run tailscale serve --bg --https=9091 http://127.0.0.1:9091
+
+# ─── Summary ─────────────────────────────────────────────────────────
+echo
+if ! $DRY_RUN; then
+    echo -e "${GREEN}Done.${NC} Current serve entries:"
+    tailscale serve status
+fi

@@ -1,0 +1,14 @@
+Subject: Scheduled Maintenance Notice
+
+Dear {{username}},
+
+We wanted to inform you that we will be performing scheduled maintenance on our systems.
+
+Your account ({{email}}) may experience brief interruptions during this time.
+
+Maintenance Window: Tomorrow 2:00 AM - 4:00 AM EST
+
+We apologize for any inconvenience.
+
+Best regards,
+Willflix Operations Team

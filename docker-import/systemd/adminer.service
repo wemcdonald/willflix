@@ -1,0 +1,15 @@
+[Unit]
+Description=Adminer Database Management
+Requires=docker.service
+After=docker.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=true
+WorkingDirectory=/docker/config
+ExecStart=/usr/bin/docker compose up -d adminer
+ExecStop=/usr/bin/docker compose stop adminer
+TimeoutStartSec=0
+
+[Install]
+WantedBy=multi-user.target

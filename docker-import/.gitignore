@@ -1,0 +1,21 @@
+# Exclude application data and backups
+backup/
+
+# Exclude homebot data directories
+appdata/homebot/logs/
+appdata/homebot/attachments/
+
+# Exclude log files
+*.log
+
+# Exclude temporary files
+*.tmp
+*.swp
+*~
+
+# Exclude dependencies
+node_modules/
+
+# Exclude OS files
+.DS_Store
+Thumbs.db

@@ -1,0 +1,1202 @@
+version: '3.8'
+
+secrets:
+  restic_password:
+    file: ./secrets/restic_password
+  authentik_secret_key:
+    file: ./secrets/authentik_secret_key
+  authentik_postgres_password:
+    file: ./secrets/authentik_postgres_password
+  openvpn_password:
+    file: ./secrets/openvpn_password
+  vnc_password:
+    file: ./secrets/vnc_password
+  smtp_password:
+    file: ./secrets/smtp_password
+  postgres_password:
+    file: ./secrets/postgres_password
+  nextcloud_postgres_password:
+    file: ./secrets/nextcloud_postgres_password
+  homarr_encryption_key:
+    file: ./secrets/homarr_encryption_key
+  grocerybot_openai_key:
+    file: ./secrets/grocerybot_openai_key
+  telegram_bot_token:
+    file: ./secrets/telegram_bot_token
+  telegram_api_hash:
+    file: ./secrets/telegram_api_hash
+  telegram_api_id:
+    file: ./secrets/telegram_api_id
+  anthropic_api_key:
+    file: ./secrets/anthropic_api_key
+  radarr_api_key:
+    file: ./secrets/radarr_api_key
+  sonarr_api_key:
+    file: ./secrets/sonarr_api_key
+  gemini_api_key:
+    file: ./secrets/gemini_api_key
+  supabase_url:
+    file: ./secrets/supabase_url
+  supabase_anon_key:
+    file: ./secrets/supabase_anon_key
+  supabase_service_role_key:
+    file: ./secrets/supabase_service_role_key
+  supabase_jwt_secret:
+    file: ./secrets/supabase_jwt_secret
+
+services:
+  backup:
+    image: mazzolino/restic
+    hostname: docker
+    restart: unless-stopped
+    container_name: restic-backup
+    volumes:
+      - /home/will/.config/rclone:/root/.config/rclone
+      - /Volumes/Bonus1/lafayette:/Volumes/Bonus1/lafayette
+      - /home/will/server-config:/home/will/server-config
+    secrets:
+      - restic_password
+    environment:
+      RUN_ON_STARTUP: "true"
+      BACKUP_CRON: "0 30 3 * * *"
+      RESTIC_REPOSITORY: /Volumes/Bonus1/lafayette
+      RESTIC_PASSWORD_FILE: /run/secrets/restic_password
+      RESTIC_BACKUP_SOURCES: /home/will/server-config
+      RESTIC_COMPRESSION: max
+      RESTIC_PACK_SIZE: 64
+      RESTIC_BACKUP_ARGS: >-
+        --exclude /docker/.git
+        --exclude /srv/mysql/data
+        --exclude *.gz
+        --no-scan
+        --cleanup-cache
+      RESTIC_FORGET_ARGS: >-
+        --keep-last 10
+        --keep-daily 14
+        --keep-weekly 8
+        --keep-monthly 24
+      TZ: America/Los_Angeles
+
+  traefik:
+    image: traefik:v2.10
+    command:
+      - "--providers.docker=true"
+      - "--providers.docker.exposedbydefault=false"
+      - "--providers.docker.watch=true"
+      - "--providers.docker.network=traefik_public"
+      - "--providers.file.filename=/config/traefik-middlewares.yml"
+      - "--providers.file.watch=true"
+      - "--entrypoints.web.address=:80"
+      - "--entrypoints.web.http.redirections.entryPoint.to=websecure"
+      - "--entrypoints.web.http.redirections.entryPoint.scheme=https"
+      - "--entrypoints.websecure.address=:443"
+      - "--certificatesresolvers.le.acme.email=wemcdonald@gmail.com"
+      - "--certificatesresolvers.le.acme.storage=/letsencrypt/acme.json"
+      - "--certificatesresolvers.le.acme.httpChallenge.entryPoint=web"
+      - "--log.level=DEBUG"
+      - "--accesslog=true"
+      - "--experimental.plugins.rewritebody.modulename=github.com/traefik/plugin-rewritebody"
+      - "--experimental.plugins.rewritebody.version=v0.3.1"
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - /docker/appdata/letsencrypt:/letsencrypt
+      - /docker/config:/config
+    networks:
+      - traefik_public
+
+  authentik-server:
+    image: ghcr.io/goauthentik/server:2025.6.4
+    command: server
+    restart: unless-stopped
+    env_file:
+      - /docker/config/secrets/authentik_env
+    environment:
+      - AUTHENTIK_EMAIL__HOST=smtp-relay
+      - AUTHENTIK_EMAIL__PORT=25
+      - AUTHENTIK_EMAIL__USE_TLS=false
+      - AUTHENTIK_EMAIL__USE_SSL=false
+      - AUTHENTIK_EMAIL__FROM=noreply@willflix.org
+      - AUTHENTIK_COOKIE_SAMESITE=Lax
+      - AUTHENTIK_COOKIE_SECURE=true
+      #- AUTHENTIK_LOG_LEVEL=trace
+        #- AUTHENTIK_SESSION_COOKIE_HTTPONLY=false
+        #- AUTHENTIK_DISABLE_SESSION_EXPIRY_REFRESH=false
+      - AUTHENTIK_COOKIE_DOMAIN=.willflix.org
+    volumes:
+      - /docker/appdata/authentik/certs:/certs
+      - /docker/appdata/authentik/media:/media
+      - /docker/appdata/authentik/templates:/templates
+    #env_file:
+    #  - .env
+    ports:
+      - 9000:9000
+      - 9443:9443
+    depends_on:
+      - postgres
+      - redis
+    networks:
+      - traefik_public
+      - default
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.authentik.rule=Host(`auth.willflix.org`)"
+      - "traefik.http.routers.authentik.entrypoints=websecure"
+      - "traefik.http.routers.authentik.tls.certresolver=le"
+      - "traefik.http.services.authentik.loadbalancer.server.port=9000"
+      - "traefik.docker.network=config_traefik_public"
+      - "traefik.http.middlewares.authentik.forwardauth.trustForwardHeader=true"
+      - "traefik.http.middlewares.authentik.forwardauth.authResponseHeaders=X-authentik-username,X-authentik-groups,X-authentik-group,X-authentik-entitlements,X-authentik-email,X-authentik-name,X-authentik-uid,X-authentik-jwt,X-authentik-meta-jwks,X-authentik-meta-outpost,X-authentik-meta-provider,X-authentik-meta-app,X-authentik-meta-version"
+
+  authentik-worker:
+    image: ghcr.io/goauthentik/server:2025.6.4
+    command: worker
+    user: root
+    restart: unless-stopped
+    env_file:
+      - /docker/config/secrets/authentik_env
+    environment:
+      - AUTHENTIK_EMAIL__HOST=smtp-relay
+      - AUTHENTIK_EMAIL__PORT=25
+      - AUTHENTIK_EMAIL__USE_TLS=false
+      - AUTHENTIK_EMAIL__USE_SSL=false
+      - AUTHENTIK_EMAIL__FROM=noreply@willflix.org
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - /docker/appdata/authentik/certs:/certs
+      - /docker/appdata/authentik/media:/media
+      - /docker/appdata/authentik/templates:/templates
+    #env_file:
+    #  - .env
+    depends_on:
+      - postgres
+      - redis
+    networks:
+      - traefik_public
+      - default
+
+  whoami:
+    image: traefik/whoami
+    networks:
+      - traefik_public
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.whoami.rule=Host(`whoami.willflix.org`)"
+      - "traefik.http.routers.whoami.entrypoints=websecure"
+      - "traefik.http.routers.whoami.tls.certresolver=le"
+      - "traefik.http.routers.whoami.middlewares=authentik-forward"
+      - "traefik.http.services.whoami.loadbalancer.server.port=80"
+      - "traefik.http.middlewares.authentik-forward.forwardauth.address=http://authentik-server:9000/outpost.goauthentik.io/auth/traefik"
+      - "traefik.http.middlewares.authentik-forward.forwardauth.trustForwardHeader=true"
+      - "traefik.http.middlewares.authentik-forward.forwardauth.authResponseHeaders=X-authentik-username,X-authentik-groups,X-authentik-email,X-authentik-name,X-authentik-uid,X-Authentik-groups,X-authentik-group"
+
+  vpn:
+    image: qmcgaw/gluetun
+    container_name: vpn
+    # line above must be uncommented to allow external containers to connect.
+    # See https://github.com/qdm12/gluetun-wiki/blob/main/setup/connect-a-container-to-gluetun.md#external-container-to-gluetun
+    cap_add:
+      - NET_ADMIN
+    devices:
+      - /dev/net/tun:/dev/net/tun
+    ports:
+      - 8967:8967/tcp # HTTP proxy
+      - 8388:8388/tcp # Shadowsocks
+      - 8388:8388/udp # Shadowsocks
+      - 6881:6881
+    secrets:
+      - openvpn_password
+    environment:
+      # See https://github.com/qdm12/gluetun-wiki/tree/main/setup#setup
+      - VPN_SERVICE_PROVIDER=privado
+      - OPENVPN_USER=twzjmvquku
+      - OPENVPN_PASSWORD_FILE=/run/secrets/openvpn_password
+      - SERVER_COUNTRIES=United States
+      - FIREWALL_VPN_INPUT_PORTS=6881
+      # Wireguard:
+      # - WIREGUARD_PRIVATE_KEY=wOEI9rqqbDwnN8/Bpp22sVz48T71vJ4fYmFWujulwUU=
+      # - WIREGUARD_ADDRESSES=10.64.222.21/32
+      # Timezone for accurate log times
+      - TZ=America/Los_Angeles
+      # Server list updater
+      # See https://github.com/qdm12/gluetun-wiki/blob/main/setup/servers.md#update-the-vpn-servers-list
+      - UPDATER_PERIOD=
+    restart: always
+    networks:
+      - traefik_public
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.services.bittorrent.loadbalancer.server.port=8967"
+      - "traefik.http.routers.bittorrent.rule=Host(`bittorrent.willflix.org`)"
+      - "traefik.http.routers.bittorrent.entrypoints=websecure"
+      - "traefik.http.routers.bittorrent.tls.certresolver=le"
+      - "traefik.http.routers.bittorrent.middlewares=authentik-forward@file"
+
+  qbittorrent:
+    image: lscr.io/linuxserver/qbittorrent:latest
+    container_name: qbittorrent
+    network_mode: "service:vpn"
+    environment:
+      - PUID=122
+      - PGID=129
+      - TZ=America/Los_Angeles
+      - WEBUI_PORT=8967
+      - TORRENTING_PORT=6881
+    volumes:
+      - /docker/appdata/qBittorrent:/config/qBittorrent
+      - /Volumes/Media:/Volumes/Media
+    depends_on:
+      - vpn
+
+#  vnc:
+#    #image: carlonluca/vnc-desktop:noble-xfce
+#    build:
+#      context: /home/will/code/docker-vnc-desktop/lxqt
+#      dockerfile: Dockerfile_noble
+#    image: docker-vnc-desktop:local
+#    container_name: vnc
+#    ports:
+#      - 5900:5900
+#    volumes:
+#      - /docker/appdata/vnc:/home/will
+#      - /Volumes/Media:/Volumes/Media
+#    secrets:
+#      - vnc_password
+#    environment:
+#      - RESOLUTION=1920x1080
+#      - USER=will
+#      - PASSWORD_FILE=/run/secrets/vnc_password
+#      - VNC_PASSWORD_FILE=/run/secrets/vnc_password
+
+  smtp-relay:
+    image: juanluisbaptiste/postfix:latest
+    container_name: smtp-relay
+    secrets:
+      - smtp_password
+    environment:
+      - SMTP_SERVER=smtp.gmail.com
+      - SMTP_PORT=587
+      - SMTP_USERNAME=wemcdonald@gmail.com
+      - SMTP_PASSWORD_FILE=/run/secrets/smtp_password
+      - SERVER_HOSTNAME=willflix.org
+    ports:
+      - 25:25
+    restart: unless-stopped
+    volumes:
+      - /docker/appdata/smtp-relay/logs:/var/log
+    networks:
+      - traefik_public
+      - default
+
+  redis:
+    image: redis:latest
+    restart: always
+    ports:
+      - 127.0.0.1:6379:6379
+    volumes:
+      - /docker/appdata/redis:/data
+    command: redis-server --appendonly yes # Example: enable AOF persistence
+    #environment:
+      #REDIS_PASSWORD: your_strong_password # Set a password for Redis
+
+
+  postgres:
+    image: postgres:17
+    restart: always
+    # set shared memory limit when using docker compose
+    shm_size: 128mb
+    # or set shared memory limit when deploy via swarm stack
+    #volumes:
+    #  - type: tmpfs
+    #    target: /dev/shm
+    #    tmpfs:
+    #      size: 134217728 # 128*2^20 bytes = 128Mb
+    # user: 129:135 # 999:999 inside
+    ports:
+      - 127.0.0.1:5432:5432
+    volumes:
+      - /docker/appdata/postgres/data:/var/lib/postgresql/data
+    secrets:
+      - postgres_password
+    environment:
+      - POSTGRES_USER=will
+      - POSTGRES_PASSWORD_FILE=/run/secrets/postgres_password
+      - POSTGRES_DB=will
+      - PGDATA=/var/lib/postgresql/data
+
+  adminer:
+    image: adminer
+    restart: always
+    ports:
+      - 127.0.0.1:48080:8080
+
+  sonarr:
+    image: lscr.io/linuxserver/sonarr:latest
+    container_name: sonarr
+    environment:
+      - PUID=122
+      - PGID=129
+      - TZ=America/Los_Angeles  # Update to your timezone
+    volumes:
+      - /docker/appdata/sonarr:/config
+      - /Volumes/Media:/Volumes/Media  # Update paths
+    ports:
+      - 8989:8989
+    restart: unless-stopped
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.services.sonarr.loadbalancer.server.port=8989"
+      - "traefik.http.routers.sonarr.rule=Host(`sonarr.willflix.org`)"
+      - "traefik.http.routers.sonarr.entrypoints=websecure"
+      - "traefik.http.routers.sonarr.tls.certresolver=le"
+      - "traefik.http.routers.sonarr.middlewares=authentik-forward@file"
+    networks:
+      - traefik_public
+
+  radarr:
+    image: lscr.io/linuxserver/radarr:latest
+    container_name: radarr
+    environment:
+      - PUID=122
+      - PGID=129  
+      - TZ=America/Los_Angeles
+    volumes:
+      - /docker/appdata/radarr:/config
+      - /Volumes/Media:/Volumes/Media
+    ports:
+      - 7878:7878
+    restart: unless-stopped
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.radarr.rule=Host(`radarr.willflix.org`)"
+      - "traefik.http.routers.radarr.entrypoints=websecure"
+      - "traefik.http.routers.radarr.tls.certresolver=le"
+      - "traefik.http.routers.radarr.middlewares=authentik-forward@file"
+      - "traefik.http.services.radarr.loadbalancer.server.port=7878"
+    networks:
+      - traefik_public
+
+  lidarr:
+    image: lscr.io/linuxserver/lidarr:latest
+    container_name: lidarr
+    environment:
+      - PUID=122
+      - PGID=129
+      - TZ=America/Los_Angeles
+    volumes:
+      - /docker/appdata/lidarr:/config
+      - /Volumes/Media:/Volumes/Media
+    ports:
+      - 8686:8686
+    restart: unless-stopped
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.lidarr.rule=Host(`lidarr.willflix.org`)"
+      - "traefik.http.routers.lidarr.entrypoints=websecure"
+      - "traefik.http.routers.lidarr.tls.certresolver=le"
+      - "traefik.http.routers.lidarr.middlewares=authentik-forward@file"
+      - "traefik.http.services.lidarr.loadbalancer.server.port=8686"
+    networks:
+      - traefik_public
+
+  prowlarr:
+    image: lscr.io/linuxserver/prowlarr:latest
+    container_name: prowlarr
+    environment:
+      - PUID=122
+      - PGID=129
+      - TZ=America/Los_Angeles
+    volumes:
+      - /docker/appdata/prowlarr:/config
+    ports:
+      - 9696:9696
+    restart: unless-stopped
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.prowlarr.rule=Host(`prowlarr.willflix.org`)"
+      - "traefik.http.routers.prowlarr.entrypoints=websecure"
+      - "traefik.http.routers.prowlarr.tls.certresolver=le"
+      - "traefik.http.routers.prowlarr.middlewares=authentik-forward@file"
+      - "traefik.http.services.prowlarr.loadbalancer.server.port=9696"
+    networks:
+      - traefik_public
+
+  lazylibrarian:
+    image: lscr.io/linuxserver/lazylibrarian:latest
+    container_name: lazylibrarian
+    environment:
+      - PUID=122
+      - PGID=129
+      - TZ=America/Los_Angeles
+    volumes:
+      - /docker/appdata/lazylibrarian:/config
+      - /Volumes/Media:/Volumes/Media
+    ports:
+      - 5299:5299
+    restart: unless-stopped
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.lazylibrarian.rule=Host(`librarian.willflix.org`)"
+      - "traefik.http.routers.lazylibrarian.entrypoints=websecure"
+      - "traefik.http.routers.lazylibrarian.tls.certresolver=le"
+      - "traefik.http.routers.lazylibrarian.middlewares=authentik-forward@file"
+      - "traefik.http.services.lazylibrarian.loadbalancer.server.port=5299"
+    networks:
+      - traefik_public
+
+  homarr:
+    image: ghcr.io/homarr-labs/homarr:latest
+    container_name: homarr
+    environment:
+      - PUID=122
+      - PGID=998
+      - TZ=America/Los_Angeles
+    env_file:
+      - /docker/config/secrets/homarr_env
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - /docker/appdata/homarr/configs:/app/data/configs
+      - /docker/appdata/homarr/icons:/app/public/icons
+      - /docker/appdata/homarr/data:/data
+      - /docker/appdata/homarr/data:/appdata
+    ports:
+      - 7575:7575
+    restart: unless-stopped
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.homarr.rule=Host(`admin.willflix.org`)"
+      - "traefik.http.routers.homarr.entrypoints=websecure"
+      - "traefik.http.routers.homarr.tls.certresolver=le"
+      - "traefik.http.routers.homarr.middlewares=authentik-forward@file"
+      - "traefik.http.services.homarr.loadbalancer.server.port=7575"
+    networks:
+      - traefik_public
+
+  nzbget:
+    image: lscr.io/linuxserver/nzbget:latest
+    container_name: nzbget
+    environment:
+      - PUID=122
+      - PGID=129
+      - TZ=America/Los_Angeles
+    volumes:
+      - /docker/appdata/nzbget:/config
+      - /Volumes/Media:/Volumes/Media
+    ports:
+      - 6789:6789
+    restart: unless-stopped
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.services.nzbget.loadbalancer.server.port=6789"
+      - "traefik.http.routers.nzbget.rule=Host(`nzbget.willflix.org`)"
+      - "traefik.http.routers.nzbget.entrypoints=websecure"
+      - "traefik.http.routers.nzbget.tls.certresolver=le"
+      - "traefik.http.routers.nzbget.middlewares=authentik-forward@file"
+    networks:
+      - traefik_public
+
+  jdownloader:
+    image: jlesage/jdownloader-2
+    ports:
+      - 5800:5800
+      #- 5900:5900 # VNC access
+      #- 3129:3129 # mobile applications and browser extensions
+    volumes:
+      - /docker/appdata/jdownloader:/config
+      - /Volumes/MediaK/Downloads/jdownload:/download
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.services.jdownloader.loadbalancer.server.port=5800"
+      - "traefik.http.routers.jdownloader.rule=Host(`jdownloader.willflix.org`)"
+      - "traefik.http.routers.jdownloader.entrypoints=websecure"
+      - "traefik.http.routers.jdownloader.tls.certresolver=le"
+      - "traefik.http.routers.jdownloader.middlewares=authentik-forward@file"
+    networks:
+      - traefik_public
+
+  audiobookshelf:
+    image: ghcr.io/advplyr/audiobookshelf:latest
+    container_name: audiobookshelf
+    environment:
+      - AUDIOBOOKSHELF_UID=122
+      - AUDIOBOOKSHELF_GID=129
+    volumes:
+      - /docker/appdata/audiobookshelf/config:/config
+      - /docker/appdata/audiobookshelf/metadata:/metadata
+      - /Volumes/Media:/Volumes/Media
+    ports:
+      - 13378:80
+    restart: unless-stopped
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.services.audiobookshelf.loadbalancer.server.port=80"
+      - "traefik.docker.network=config_traefik_public"
+      - "traefik.http.routers.audiobookshelf.rule=Host(`audiobooks.willflix.org`)"
+      - "traefik.http.routers.audiobookshelf.entrypoints=websecure"
+      - "traefik.http.routers.audiobookshelf.tls.certresolver=le"
+    networks:
+      - traefik_public
+
+
+  # Backup
+  calibre:
+    image: lscr.io/linuxserver/calibre:latest
+    container_name: calibre
+    security_opt:
+      - seccomp:unconfined #optional
+    environment:
+      - PUID=501
+      - PGID=501
+      - TZ=America/Los_Angeles
+      - CUSTOM_USER=will
+      - PASSWORD=flyingleap
+        #- CLI_ARGS= #optional
+    volumes:
+      - /docker/appdata/calibre:/config
+      - /Volumes/Media/Calibre:/books
+    ports:
+      - 58080:8080
+      - 58181:8181
+      - 58081:8081
+    restart: unless-stopped
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.calibre.rule=Host(`calibre.willflix.org`)"
+      - "traefik.http.routers.calibre.entrypoints=websecure"
+      - "traefik.http.routers.calibre.tls.certresolver=le"
+      - "traefik.http.services.calibre.loadbalancer.server.port=58080"
+
+  calibre-web-automated:
+    image: crocodilestick/calibre-web-automated:latest
+    container_name: calibre-web-automated
+    environment:
+      - PUID=501
+      - PGID=501
+      - TZ=America/Los_Angeles
+    volumes:
+      - /docker/appdata/calibre-web-automated/cwa:/config
+      - /docker/appdata/calibre-ingest:/cwa-book-ingest
+      - /Volumes/Media/Calibre:/calibre-library
+      - /docker/appdata/calibre-web-automated/s6-overlay/s6-rc.d/calibre-content-server:/etc/s6-overlay/s6-rc.d/calibre-content-server
+    restart: unless-stopped
+    ports:
+      - 58080:8080
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.middlewares.kobo-sync-headers.headers.customrequestheaders.X-Scheme=https"
+      - "traefik.http.services.calibre-web.loadbalancer.server.port=8083"
+      - "traefik.http.routers.calibre-web.rule=Host(`books.willflix.org`)"
+      - "traefik.http.routers.calibre-web.entrypoints=websecure"
+      - "traefik.http.routers.calibre-web.tls.certresolver=le"
+      - "traefik.http.routers.calibre-web.middlewares=authentik-forward@file,kobo-sync-headers"
+    networks:
+      - traefik_public
+
+  byparr:
+    image: ghcr.io/thephaseless/byparr:latest
+    container_name: byparr
+    environment:
+      - USE_HEADLESS=false
+      - TZ=America/Los_Angeles
+      - DISPLAY=:99
+      - XVFB_DISPLAY=:99
+      - XVFB_RES=1920x1080x24
+    ports:
+      - 8191:8191
+    restart: unless-stopped
+    shm_size: 2gb
+    cap_add:
+      - SYS_ADMIN
+    security_opt:
+      - seccomp=unconfined
+    command: >
+      sh -c "
+        apt-get update && apt-get install -y xvfb x11-utils &&
+        Xvfb :99 -screen 0 1920x1080x24 -ac +extension GLX +render -noreset &
+        sleep 2 &&
+        python3 main.py
+      "
+    networks:
+      - traefik_public
+      - default
+
+  calibre-web-book-downloader:
+    # build:
+    #   context: /home/will/code/calibre-web-automated-book-downloader
+    #   dockerfile: Dockerfile
+    #   target: cwa-bd
+    image: wemcdonald/calibre-web-automated-book-downloader:latest
+    container_name: calibre-web-book-downloader
+    environment:
+      - FLASK_PORT=8084
+      - LOG_LEVEL=info
+      - BOOK_LANGUAGE=en
+      - USE_BOOK_TITLE=true
+      - TZ=America/Los_Angeles
+      - APP_ENV=prod
+      - UID=501
+      - GID=501
+      - USING_TOR=false
+      - USE_CF_BYPASS=true
+      - BYPASS_METHOD=byparr
+      - BYPARR_URL=http://byparr:8191
+      - BYPARR_PATH=/v1
+      - BYPARR_TIMEOUT=60000
+      # - CWA_DB_PATH=/auth/app.db
+    depends_on:
+      - byparr
+    volumes:
+      - /docker/appdata/calibre-ingest:/cwa-book-ingest
+      # - /docker/appdata/calibre-web-automated/app.db:/auth/app.db:ro
+    ports:
+      - 8084:8084
+    restart: unless-stopped
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.services.calibre-web-book-downloader.loadbalancer.server.port=8084"
+      - "traefik.http.routers.calibre-web-book-downloader.rule=Host(`bookstore.willflix.org`)"
+      - "traefik.http.routers.calibre-web-book-downloader.entrypoints=websecure"
+      - "traefik.http.routers.calibre-web-book-downloader.tls.certresolver=le"
+      - "traefik.http.routers.calibre-web-book-downloader.middlewares=authentik-forward@file"
+    networks:
+      - traefik_public
+
+  healthbot:
+    image: ghcr.io/wemcdonald/healthbot:latest
+    container_name: healthbot
+    restart: unless-stopped
+    environment:
+      - PUID=501
+      - PGID=501
+      - TZ=America/Los_Angeles
+      - HEALTHBOT_CONFIG=/config/healthbot
+    volumes:
+      - /docker/appdata/healthbot/config:/config:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - /run/systemd:/run/systemd:ro
+      - /:/host:ro
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3334/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.services.healthbot.loadbalancer.server.port=3334"
+      - "traefik.http.routers.healthbot.rule=Host(`health.willflix.org`)"
+      - "traefik.http.routers.healthbot.entrypoints=websecure"
+      - "traefik.http.routers.healthbot.tls.certresolver=le"
+      - "traefik.http.routers.healthbot.middlewares=authentik-forward@file"
+    networks:
+      - traefik_public
+
+  nextcloud:
+    image: nextcloud
+    restart: always
+    #user: www-data
+    ports:
+      - 8020:80
+    depends_on:
+      - redis
+      - postgres
+    volumes:
+      - /docker/appdata/nextcloud:/var/www/html
+      - /Volumes/Media:/Volumes/Media
+    secrets:
+      - nextcloud_postgres_password
+    environment:
+      - POSTGRES_PASSWORD_FILE=/run/secrets/nextcloud_postgres_password
+      - POSTGRES_DB=nextcloud
+      - POSTGRES_USER=nextclouduser
+      - POSTGRES_HOST=postgres
+      - REDIS_HOST=redis
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.services.nextcloud.loadbalancer.server.port=80"
+      - "traefik.http.routers.nextcloud.rule=Host(`willflix.org`) || Host(`www.willflix.org`)"
+      - "traefik.http.routers.nextcloud.entrypoints=websecure"
+      - "traefik.http.routers.nextcloud.tls.certresolver=le"
+      - "traefik.docker.network=config_traefik_public"
+    networks:
+      - traefik_public
+      - default
+
+  nginx-public:
+    image: nginx:alpine
+    container_name: nginx-public
+    volumes:
+      - /docker/appdata/nginx-public:/usr/share/nginx/html:ro
+      - /home/shostack/code/stanfordopen.github.io:/stanford:ro
+      - /docker/config/nginx-public.conf:/etc/nginx/nginx.conf:ro
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.services.nginx-public.loadbalancer.server.port=80"
+      - "traefik.http.routers.nginx-public.rule=Host(`public.willflix.org`)"
+      - "traefik.http.routers.nginx-public.entrypoints=websecure"
+      - "traefik.http.routers.nginx-public.tls.certresolver=le"
+      - "traefik.http.routers.nging-public.service=nginx-public"
+      - "traefik.http.routers.logout.rule=Host(`logout.willflix.org`)"
+      - "traefik.http.routers.logout.entrypoints=websecure"
+      - "traefik.http.routers.logout.tls.certresolver=le"
+      - "traefik.http.routers.logout.service=nginx-public"
+      - "traefik.http.routers.logout.middlewares=nginx-public-logout@docker"
+      - "traefik.http.routers.stanford.rule=Host(`stanford.willflix.org`)"
+      - "traefik.http.routers.stanford.entrypoints=websecure"
+      - "traefik.http.routers.stanford.tls.certresolver=le"
+      - "traefik.http.routers.stanford.service=nginx-public"
+      - "traefik.docker.network=config_traefik_public"
+    networks:
+      - traefik_public
+
+  nginx-private:
+    image: nginx:alpine  
+    container_name: nginx-private
+    volumes:
+      - /docker/appdata/nginx-private:/usr/share/nginx/html:ro
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.services.nginx-private.loadbalancer.server.port=80"
+      - "traefik.http.routers.nginx-private.rule=Host(`private.willflix.org`)"
+      - "traefik.http.routers.nginx-private.entrypoints=websecure"
+      - "traefik.http.routers.nginx-private.tls.certresolver=le"
+      - "traefik.http.routers.nginx-private.middlewares=authentik-forward@file"
+      - "traefik.docker.network=config_traefik_public"
+    networks:
+      - traefik_public
+
+  tautulli:
+    image: lscr.io/linuxserver/tautulli:latest
+    container_name: tautulli
+    environment:
+      - PUID=122
+      - PGID=129
+      - TZ=America/Los_Angeles
+    volumes:
+      - /docker/appdata/tautulli/config:/config
+    ports:
+      - 48181:8181
+    restart: unless-stopped
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.services.tautulli.loadbalancer.server.port=8181"
+      - "traefik.http.routers.tautulli.rule=Host(`tautulli.willflix.org`)"
+      - "traefik.http.routers.tautulli.entrypoints=websecure"
+      - "traefik.http.routers.tautulli.tls.certresolver=le"
+      - "traefik.http.routers.tautulli.middlewares=authentik-forward@file"
+    networks:
+      - traefik_public
+
+  plex:
+    image: lscr.io/linuxserver/plex:latest
+    container_name: plex
+    network_mode: host
+    environment:
+      - PUID=122
+      - PGID=129
+      - TZ=America/Los_Angeles
+      - VERSION=docker
+      - PLEX_MEDIA_SERVER_APPLICATION_SUPPORT_DIR=/Volumes/Plex
+        #- PLEX_CLAIM=claim-Vczyc6sjKDVuZQPtr-zZ
+    volumes:
+      - /Volumes/Plex:/Volumes/Plex
+      - /Volumes/PlexTranscode:/Volumes/PlexTranscode
+      - /Volumes/Media/TV:/Volumes/Media/TV
+      - /Volumes/Media/Movies:/Volumes/Media/Movies
+      - /Volumes/Media/KidsMovies:/Volumes/Media/KidsMovies
+      - /Volumes/Media/KidsTV:/Volumes/Media/KidsTV
+      - /Volumes/Media/TV4K:/Volumes/Media/TV4K
+      - /Volumes/Media/Movies4K:/Volumes/Media/Movies4K
+      - /Volumes/Media/CalibreAudiobooks:/Volumes/Media/CalibreAudiobooks
+    restart: unless-stopped
+
+  webhook-handler:
+    image: alpine:latest
+    container_name: webhook-handler
+    restart: unless-stopped
+    working_dir: /app
+    volumes:
+      - /docker/bin:/app/bin:ro
+      - /docker/logs:/app/logs
+      - /docker/config/secrets:/app/secrets:ro
+    command: >
+      sh -c "
+        apk add --no-cache bash curl jq python3 &&
+        python3 /app/bin/webhook-server.py 8080
+      "
+    networks:
+      - traefik_public
+    expose:
+      - "8080"
+
+
+  ddclient:
+    image: lscr.io/linuxserver/ddclient:latest
+    container_name: ddclient
+    restart: unless-stopped
+    environment:
+      - PUID=501
+      - PGID=501
+      - TZ=America/Los_Angeles
+    volumes:
+      - /docker/appdata/ddclient:/config
+
+  grocerybot:
+    build:
+      context: /home/will/code/grocery-bot
+      dockerfile: Dockerfile
+    container_name: grocerybot
+    restart: unless-stopped
+    secrets:
+      - grocerybot_openai_key
+    environment:
+      - PUID=501
+      - PGID=501
+      - TZ=America/Los_Angeles
+      - PORT=8000
+      - DATA_PATH=/app/data
+      - OPENAI_API_KEY_FILE=/run/secrets/grocerybot_openai_key
+      - OPENAI_MODEL=gpt-5-mini
+    volumes:
+      - /docker/appdata/grocerybot:/app/data
+    ports:
+      - 8085:8000
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.grocerybot.rule=Host(`groceries.willflix.org`)"
+      - "traefik.http.routers.grocerybot.entrypoints=websecure"
+      - "traefik.http.routers.grocerybot.tls.certresolver=le"
+        #- "traefik.http.routers.grocerybot.middlewares=authentik-forward@file"
+      - "traefik.docker.network=config_traefik_public"
+      - "traefik.http.services.grocerybot.loadbalancer.server.port=8000"
+    networks:
+      - traefik_public
+
+  samba:
+    image: crazymax/samba:latest
+    container_name: samba
+    restart: unless-stopped
+    ports:
+      - "139:139"
+      - "445:445"
+    environment:
+      - TZ=America/Los_Angeles
+      - SAMBA_LOG_LEVEL=1
+      - SAMBA_HOSTS_ALLOW=127.0.0.0/8 10.0.0.0/8 172.16.0.0/12 192.168.0.0/16 100.0.0.0/8
+      - SHARE1_NAME=Media
+      - SHARE1_PATH=/data/Media
+      - SHARE1_RW=true
+      - SHARE1_GUEST=false
+      - SHARE1_USERS=will
+    volumes:
+      - /Volumes/Media:/data/Media
+      - /docker/appdata/samba:/etc/samba
+      - /docker/appdata/samba/init-users.sh:/etc/cont-init.d/99-init-users.sh:ro
+      - samba_config:/data/config
+
+#  ofelia:
+#    image: mcuadros/ofelia:latest  
+#    container_name: ofelia
+#    restart: unless-stopped
+#    volumes:
+#      - /var/run/docker.sock:/var/run/docker.sock:ro
+#      - /etc/localtime:/etc/localtime:ro
+#      - /etc/timezone:/etc/timezone:ro
+#      - /docker/appdata/ofelia/logs:/tmp/logs
+#      - /docker/bin:/scripts:ro
+#      - /Volumes/Media:/Volumes/Media
+#    environment:
+#      - TZ=America/Los_Angeles
+#    entrypoint: >
+#      sh -c "
+#        apk add --no-cache bash docker-cli &&
+#        ofelia daemon --docker
+#      "
+#    networks:
+#      - traefik_public
+#      - default
+#    labels:
+#      - "ofelia.smtp-host=smtp-relay"
+#      - "ofelia.smtp-port=25"
+#      - "ofelia.email-from=wemcdonald@gmail.com"
+#      - "ofelia.email-to=wemcdonald@gmail.com"
+#      - "ofelia.mail-only-on-error=true"
+#      - "ofelia.save-folder=/tmp/logs"
+#      - "ofelia.save-only-on-error=false"
+
+      # === DOCKER CONTAINER MANAGEMENT ===
+      # Restart Plex at 4 AM daily (for updates)
+      #- "ofelia.job-local.restart-plex.schedule=0 4 * * *"
+      #- "ofelia.job-local.restart-plex.command=docker pull lscr.io/linuxserver/plex:latest && docker "
+      
+      # === MEDIA MANAGEMENT ===  
+      # Normalize media permissions - every 10 minutes
+      #- "ofelia.job-local.normalize-permissions.schedule=*/10 * * * *"
+      #- "ofelia.job-local.normalize-permissions.command=bash /scripts/normalize_media_permissions"
+
+  homebot:
+    build:
+      context: /home/will/code/homebot
+      dockerfile: Dockerfile
+    container_name: homebot
+    restart: unless-stopped
+    
+    # Environment configuration using secrets
+    environment:
+      - PYTHONUNBUFFERED=1
+      - PYTHONPATH=/app
+      - TELEGRAM_BOT_TOKEN_FILE=/run/secrets/telegram_bot_token
+      - TELEGRAM_API_HASH_FILE=/run/secrets/telegram_api_hash
+      - TELEGRAM_API_ID_FILE=/run/secrets/telegram_api_id
+      - ANTHROPIC_API_KEY_FILE=/run/secrets/anthropic_api_key
+      - RADARR_URL=http://radarr:7878
+      - SONARR_URL=http://sonarr:8989
+      - RADARR_API_KEY_FILE=/run/secrets/radarr_api_key
+      - SONARR_API_KEY_FILE=/run/secrets/sonarr_api_key
+      - CLAUDE_CODE_WORKING_DIR=/app
+      - CLAUDE_CODE_MAX_TURNS=10
+      - ALLOWED_TOOLS=Read,Write,Bash,WebSearch,Glob,Grep
+      - CONTEXT_CLEANUP_MINUTES=30
+      - MAX_FILE_SIZE_MB=20
+      - TEMP_FILES_DIR=/tmp/attachments
+      - ATTACHMENTS_DIR=/app/attachments
+      - LOG_LEVEL=INFO
+      - LOG_FORMAT=json
+      - LOG_ROTATION=daily
+      - LOG_RETENTION_DAYS=30
+      - LOG_PER_USER=false
+      - ENABLE_SUB_AGENTS=true
+      - ENABLE_FILE_PROCESSING=true
+      - ENABLE_CONVERSATION_LOGGING=true
+      - DEBUG_ECHO=false
+    
+    # Secrets
+    secrets:
+      - telegram_bot_token
+      - telegram_api_hash
+      - telegram_api_id
+      - anthropic_api_key
+      - radarr_api_key
+      - sonarr_api_key
+    
+    # Volume mounts
+    volumes:
+      # Agent configurations (read-only from appdata)
+      - /docker/appdata/homebot/agents:/app/agents:ro
+      
+      # Logs directory (persistent)
+      - /docker/appdata/homebot/logs:/app/logs
+      
+      # Session data (persistent)
+      - homebot_sessions:/app/sessions
+      
+      # Temporary files (cleaned on restart)
+      - homebot_temp:/app/temp
+      
+      # Attachments directory
+      - /docker/appdata/homebot/attachments:/app/attachments
+    
+    # Resource limits
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+          cpus: '0.5'
+        reservations:
+          memory: 256M
+          cpus: '0.1'
+    
+    # Health check
+    healthcheck:
+      test: ["CMD", "python", "-c", "import os; exit(0 if os.path.exists('/app/sessions/health') else 1)"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    
+    # Logging configuration
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    
+    # Network configuration
+    networks:
+      - homebot_network
+      - traefik_public
+
+  gastown:
+    build:
+      context: /docker/appdata/gastown
+      dockerfile: Dockerfile
+    container_name: gastown
+    restart: unless-stopped
+    environment:
+      - NODE_ENV=development
+    volumes:
+      - /docker/appdata/gastown:/app
+      - /app/node_modules
+      - /app/.next
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.services.gastown.loadbalancer.server.port=3000"
+      - "traefik.http.routers.gastown.rule=Host(`gt.willflix.org`)"
+      - "traefik.http.routers.gastown.entrypoints=websecure"
+      - "traefik.http.routers.gastown.tls.certresolver=le"
+      - "traefik.http.routers.gastown.middlewares=authentik-forward@file"
+    networks:
+      - traefik_public
+
+  guildmaster:
+    build:
+      context: /docker/appdata/guildmaster
+      dockerfile: Dockerfile
+    container_name: guildmaster
+    restart: unless-stopped
+    environment:
+      - NODE_ENV=development
+      - PORT=3000
+      - VITE_PORT=5173
+      - SUPABASE_URL_FILE=/run/secrets/supabase_url
+      - SUPABASE_SERVICE_ROLE_KEY_FILE=/run/secrets/supabase_service_role_key
+      - SUPABASE_JWT_SECRET_FILE=/run/secrets/supabase_jwt_secret
+      - SUPABASE_ANON_KEY_FILE=/run/secrets/supabase_anon_key
+      - CLAUDE_API_KEY_FILE=/run/secrets/anthropic_api_key
+      - GEMINI_API_KEY_FILE=/run/secrets/gemini_api_key
+      - VITE_SUPABASE_URL=https://akmooahyrmopubriemlu.supabase.co
+      - VITE_SUPABASE_ANON_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFrbW9vYWh5cm1vcHVicmllbWx1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzA0MTQ1NDUsImV4cCI6MjA4NTk5MDU0NX0.P2JbnvbCImR3fFB_IBSxeGTlbuXYJlMWl0ZYVg9iX3c
+    secrets:
+      - anthropic_api_key
+      - gemini_api_key
+      - supabase_url
+      - supabase_anon_key
+      - supabase_service_role_key
+      - supabase_jwt_secret
+    ports:
+      - "127.0.0.1:5173:5173"
+      - "127.0.0.1:3000:3000"
+    volumes:
+      - /docker/appdata/guildmaster:/app
+    labels:
+      - "traefik.enable=true"
+      # Frontend service (Vite on port 5173)
+      - "traefik.http.services.guildmaster.loadbalancer.server.port=5173"
+      # Backend service (Bun on port 3000) for WebSocket
+      - "traefik.http.services.guildmaster-backend.loadbalancer.server.port=3000"
+      # Main router for HTTP requests (with auth)
+      - "traefik.http.routers.guildmaster.rule=Host(`guildmaster.willflix.org`)"
+      - "traefik.http.routers.guildmaster.entrypoints=websecure"
+      - "traefik.http.routers.guildmaster.tls.certresolver=le"
+      - "traefik.http.routers.guildmaster.middlewares=authentik-forward@file"
+      - "traefik.http.routers.guildmaster.service=guildmaster"
+      # WebSocket router - goes directly to backend, bypassing Vite proxy
+      - "traefik.http.routers.guildmaster-ws.rule=Host(`guildmaster.willflix.org`) && PathPrefix(`/ws`)"
+      - "traefik.http.routers.guildmaster-ws.entrypoints=websecure"
+      - "traefik.http.routers.guildmaster-ws.tls.certresolver=le"
+      - "traefik.http.routers.guildmaster-ws.service=guildmaster-backend"
+    networks:
+      - traefik_public
+
+  health-server:
+    build:
+      context: /docker/appdata/health-server
+      dockerfile: Dockerfile
+    container_name: health-server
+    restart: unless-stopped
+    env_file:
+      - /docker/config/secrets/healthserver_env
+    environment:
+      - TZ=America/Los_Angeles
+      - SERVER_HOST=0.0.0.0
+      - SERVER_PORT=3500
+      - LOG_LEVEL=info
+    depends_on:
+      - postgres
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.services.health-server.loadbalancer.server.port=3500"
+      - "traefik.http.routers.health-server.rule=Host(`healthdata.willflix.org`)"
+      - "traefik.http.routers.health-server.entrypoints=websecure"
+      - "traefik.http.routers.health-server.tls.certresolver=le"
+      - "traefik.docker.network=config_traefik_public"
+    networks:
+      - traefik_public
+      - default
+
+  overseerr:
+    image: lscr.io/linuxserver/overseerr:latest
+    container_name: overseerr
+    environment:
+      - PUID=122
+      - PGID=129
+      - TZ=America/Los_Angeles
+    volumes:
+      - /docker/appdata/overseerr:/config
+    ports:
+      - 5055:5055
+    restart: unless-stopped
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.overseerr.rule=Host(`requests.willflix.org`)"
+      - "traefik.http.routers.overseerr.entrypoints=websecure"
+      - "traefik.http.routers.overseerr.tls.certresolver=le"
+      - "traefik.http.routers.overseerr.middlewares=authentik-forward@file"
+      - "traefik.http.services.overseerr.loadbalancer.server.port=5055"
+    networks:
+      - traefik_public
+
+  copyparty:
+    image: copyparty/ac:latest
+    container_name: copyparty
+    entrypoint: ["python3", "-m", "copyparty", "--mtag-v", "-c", "/cfg/copyparty.conf"]
+    environment:
+      - PUID=122
+      - PGID=129
+      - TZ=America/Los_Angeles
+      - PRTY_NO_TLS=true
+      - LD_PRELOAD=/usr/lib/libmimalloc-secure.so.2
+      - DEFAULT_ACCOUNT_PERMS=r
+    volumes:
+      - /docker/appdata/copyparty:/cfg
+      - /docker/appdata/copyparty/hist:/w/.hist
+      - /Volumes/Media:/mnt/Media
+    ports:
+      - 3923:3923
+    restart: unless-stopped
+    stop_grace_period: 15s
+    healthcheck:
+      test: ["CMD-SHELL", "wget --spider -q 127.0.0.1:3923/?reset"]
+      interval: 1m
+      timeout: 2s
+      retries: 5
+      start_period: 15s
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.copyparty.rule=Host(`files.willflix.org`)"
+      - "traefik.http.routers.copyparty.entrypoints=websecure"
+      - "traefik.http.routers.copyparty.tls.certresolver=le"
+      - "traefik.http.routers.copyparty.middlewares=authentik-forward@file"
+      - "traefik.http.services.copyparty.loadbalancer.server.port=3923"
+      - "traefik.http.middlewares.authentik-forward.forwardauth.trustForwardHeader=true"
+      - "traefik.http.middlewares.authentik-forward.forwardauth.authResponseHeaders=X-authentik-username,X-authentik-groups,X-authentik-email,X-authentik-name,X-authentik-uid,X-authentik-group"
+    networks:
+      - traefik_public
+
+volumes:
+  samba_config:
+  homebot_sessions:
+    driver: local
+  homebot_temp:
+    driver: local
+
+networks:
+  traefik_public:
+    name: config_traefik_public
+  homebot_network:
+    driver: bridge
+  default:
+    name: config_default
+    external: true

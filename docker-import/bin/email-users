@@ -1,0 +1,112 @@
+#!/bin/bash
+
+# Email users from authentik with template support
+# Usage: 
+#   ./bin/email-users <template_file> <email1> [email2] [email3] ...
+#   ./bin/email-users <template_file> --all
+
+set -e
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+TEMPLATES_DIR="/docker/appdata/smtp-relay/templates"
+
+# Check arguments
+if [ $# -lt 2 ]; then
+    echo "Usage: $0 <template_file> <email1> [email2] ... | $0 <template_file> --all" >&2
+    echo "" >&2
+    echo "Examples:" >&2
+    echo "  $0 welcome.txt user@example.com" >&2
+    echo "  $0 welcome.txt user1@example.com user2@example.com" >&2
+    echo "  $0 welcome.txt --all" >&2
+    echo "" >&2
+    echo "Available templates:" >&2
+    if [ -d "$TEMPLATES_DIR" ]; then
+        ls -1 "$TEMPLATES_DIR"/ 2>/dev/null | sed 's/^/  /' || echo "  (no templates found)"
+    else
+        echo "  (templates directory not found)"
+    fi
+    exit 1
+fi
+
+TEMPLATE_FILE="$1"
+shift
+
+# Check if template exists
+TEMPLATE_PATH="$TEMPLATES_DIR/$TEMPLATE_FILE"
+if [ ! -f "$TEMPLATE_PATH" ]; then
+    echo "Error: Template file '$TEMPLATE_FILE' not found in $TEMPLATES_DIR" >&2
+    exit 1
+fi
+
+# Function to get username from email using list-users
+get_username_for_email() {
+    local target_email="$1"
+    "$SCRIPT_DIR/list-users" | while read username email; do
+        if [ "$email" = "$target_email" ]; then
+            echo "$username"
+            return 0
+        fi
+    done
+}
+
+# Function to process template with variables
+process_template() {
+    local template_content="$1"
+    local username="$2"
+    local email="$3"
+    
+    # Replace template variables
+    echo "$template_content" | sed "s/{{username}}/$username/g" | sed "s/{{email}}/$email/g"
+}
+
+# Function to send email to one user
+send_email() {
+    local email="$1"
+    local username="$2"
+    
+    echo "Sending email to $username ($email)..."
+    
+    # Read template
+    local template_content=$(cat "$TEMPLATE_PATH")
+    
+    # Process template with variables
+    local processed_email=$(process_template "$template_content" "$username" "$email")
+    
+    # Send email
+    echo "$processed_email" | "$SCRIPT_DIR/sendmail-docker" "$email"
+    
+    if [ $? -eq 0 ]; then
+        echo "  ✓ Sent successfully"
+    else
+        echo "  ✗ Failed to send" >&2
+    fi
+}
+
+# Determine email addresses to send to
+if [ "$1" = "--all" ]; then
+    echo "Sending to all users..."
+    echo ""
+    
+    # Get all users and send emails
+    "$SCRIPT_DIR/list-users" | while read username email; do
+        if [ -n "$username" ] && [ -n "$email" ]; then
+            send_email "$email" "$username"
+        fi
+    done
+else
+    # Send to specific email addresses
+    for target_email in "$@"; do
+        # Get username for this email
+        username=$(get_username_for_email "$target_email")
+        
+        if [ -z "$username" ]; then
+            echo "Warning: Email '$target_email' not found in authentik users, using email as username" >&2
+            username="$target_email"
+        fi
+        
+        send_email "$target_email" "$username"
+    done
+fi
+
+echo ""
+echo "Email sending complete!"

@@ -1,0 +1,99 @@
+# ================================
+# DOCKER APPDATA SELECTIVE TRACKING  
+# Exclude most directories, include configs
+# ================================
+
+# =============================================================================
+# EXCLUDE MOST APP DIRECTORIES (data-heavy)
+# =============================================================================
+audiobookshelf/
+calibre/
+calibre-*/
+copyparty/
+gastown/
+grocerybot/
+guildmaster/
+healthbot/
+health-server/
+homarr/
+jdownloader/
+lazylibrarian/
+letsencrypt/
+lidarr/
+nextcloud*/
+nzbget/
+openclaw/
+overseerr/
+postgres/
+prowlarr/
+qBittorrent/
+radarr/
+redis/
+sonarr/
+tautulli/
+vnc/
+
+# =============================================================================
+# INCLUDE THESE DIRECTORIES ENTIRELY
+# =============================================================================
+!authentik/
+!nginx-*/
+!smtp-relay/
+
+# =============================================================================
+# SELECTIVELY INCLUDE CONFIGS FROM EXCLUDED DIRS
+# =============================================================================
+
+# Nextcloud configuration
+!nextcloud/config/
+!nextcloud/config/**
+
+# Calibre-web email templates
+!calibre-web-automated/cps/templates/
+!calibre-web-automated/cps/templates/**
+
+# JDownloader settings
+!jdownloader/cfg/
+!jdownloader/cfg/**
+
+# OpenCode configuration (entire directory tracked, noise excluded below)
+!opencode/
+!opencode/**
+
+# OpenClaw workspace (markdown configs, skills, package deps)
+!openclaw/
+!openclaw/workspace/
+!openclaw/workspace/**
+
+# App config files
+!*/config.xml
+!*/*.conf
+!*/categories.json
+!*/watched_folders.json
+!*/settings.json
+
+# =============================================================================
+# EXCLUDE SENSITIVE/DATA FILES FROM INCLUDED DIRS
+# =============================================================================
+
+# Even in included dirs, exclude sensitive data
+authentik/media/
+authentik/certs/
+nginx-*/logs/
+nginx-*/log/
+smtp-relay/logs/
+ofelia/logs/
+
+# OpenCode noise (node_modules, runtime state, editor files)
+opencode/node_modules/
+opencode/bun.lock
+opencode/push-tokens.json
+opencode/*.swp
+opencode/*.swo
+
+# OpenClaw noise
+openclaw/workspace/node_modules/
+openclaw/workspace/.git/
+openclaw/workspace/memory/
+openclaw/workspace/MEMORY.md
+openclaw/workspace/*.swp

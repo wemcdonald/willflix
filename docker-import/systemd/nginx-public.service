@@ -1,0 +1,15 @@
+[Unit]
+Description=nginx-public
+Requires=docker.service
+After=docker.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=true
+WorkingDirectory=/docker/config
+ExecStart=/usr/bin/docker compose up -d nginx-public
+ExecStop=/usr/bin/docker compose down nginx-public
+TimeoutStartSec=0
+
+[Install]
+WantedBy=multi-user.target

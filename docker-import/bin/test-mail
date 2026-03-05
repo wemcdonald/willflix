@@ -1,0 +1,34 @@
+#!/bin/bash
+# Test script for the new Docker-based mail system
+
+set -euo pipefail
+
+echo "Testing Docker-based mail system..."
+
+# Test 1: Simple mail to user (should map to Gmail)
+echo "Test 1: Sending mail to local user 'will'"
+echo "This is a test message from the Docker mail system - Test 1" | /usr/sbin/sendmail will
+
+# Test 2: Mail with explicit recipient
+echo "Test 2: Sending mail with explicit recipient"
+echo "This is a test message from the Docker mail system - Test 2" | /usr/sbin/sendmail wemcdonald@gmail.com
+
+# Test 3: Mail with subject and proper headers (like cron would send)
+echo "Test 3: Sending mail with headers (cron-style)"
+cat << EOF | /usr/sbin/sendmail -t
+To: will
+Subject: Docker Mail Test - Cron Style
+From: root@willflix.org
+
+This is a test message that simulates what cron would send.
+The system is working if you receive this in your Gmail.
+
+Test completed at: $(date)
+EOF
+
+# Test 4: Test through standard mail command
+echo "Test 4: Using system mail command"
+echo "This is a test using the mail command" | mail -s "Docker Mail Test - Mail Command" will
+
+echo "All tests sent. Check your Gmail for 4 test messages."
+echo "Monitor the logs with: tail -f /docker/logs/mail.log"

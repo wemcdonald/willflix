@@ -1,0 +1,1 @@
+exec docker exec restic-backup restic -r /Volumes/Bonus1/lafayette $@

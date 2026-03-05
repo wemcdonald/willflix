@@ -1,0 +1,196 @@
+#!/bin/bash
+# System sendmail replacement that routes all mail through Docker smtp-relay
+# This replaces the system sendmail binary to ensure all mail goes through our Docker setup
+
+set -euo pipefail
+
+# Configuration
+SMTP_RELAY_HOST="localhost"
+SMTP_RELAY_PORT="25"
+DEFAULT_FROM="root@willflix.org"
+DEFAULT_TO="wemcdonald@gmail.com"
+
+# Log function
+log() {
+    echo "[$(date '+%Y-%m-%d %H:%M:%S')] sendmail-system: $*" | sudo tee -a /docker/logs/mail.log >/dev/null 2>&1 || true
+}
+
+# Parse command line arguments
+RECIPIENTS=()
+FROM_ADDRESS=""
+IGNORE_DOTS=false
+EXTRACT_RECIPIENTS=false
+VERBOSE=false
+
+while [[ $# -gt 0 ]]; do
+    case $1 in
+        -t|-oi|-i|-oem|-oep|-odq|-odb)
+            # Standard sendmail flags - handle appropriately
+            if [[ "$1" == "-t" ]]; then
+                EXTRACT_RECIPIENTS=true
+            fi
+            if [[ "$1" == "-oi" ]] || [[ "$1" == "-i" ]]; then
+                IGNORE_DOTS=true
+            fi
+            shift
+            ;;
+        -f|-r|-R)
+            # From address flag
+            if [[ $# -gt 1 ]]; then
+                FROM_ADDRESS="$2"
+                shift 2
+            else
+                shift
+            fi
+            ;;
+        -F)
+            # Full name flag - ignore the value
+            if [[ $# -gt 1 ]]; then
+                shift 2
+            else
+                shift
+            fi
+            ;;
+        -v|-vv)
+            # Verbose mode
+            VERBOSE=true
+            shift
+            ;;
+        -*)
+            # Other flags - ignore
+            shift
+            ;;
+        *)
+            # Recipient address
+            RECIPIENTS+=("$1")
+            shift
+            ;;
+    esac
+done
+
+# Read email content from stdin
+EMAIL_CONTENT=$(cat)
+
+# Extract recipients from headers if -t flag was used or no recipients specified
+if [[ "$EXTRACT_RECIPIENTS" == true ]] || [[ ${#RECIPIENTS[@]} -eq 0 ]]; then
+    # Extract To, Cc, and Bcc recipients from headers
+    TO_RECIPIENTS=($(echo "$EMAIL_CONTENT" | grep -i "^To:" | cut -d: -f2- | tr ',' '\n' | sed -E 's/^[[:space:]]*//;s/[[:space:]]*$//;s/.*<(.*)>.*/\1/;s/[<>]//g' | grep -v '^$' || true))
+    CC_RECIPIENTS=($(echo "$EMAIL_CONTENT" | grep -i "^Cc:" | cut -d: -f2- | tr ',' '\n' | sed -E 's/^[[:space:]]*//;s/[[:space:]]*$//;s/.*<(.*)>.*/\1/;s/[<>]//g' | grep -v '^$' || true))
+    BCC_RECIPIENTS=($(echo "$EMAIL_CONTENT" | grep -i "^Bcc:" | cut -d: -f2- | tr ',' '\n' | sed -E 's/^[[:space:]]*//;s/[[:space:]]*$//;s/.*<(.*)>.*/\1/;s/[<>]//g' | grep -v '^$' || true))
+    
+    # Combine all recipients
+    ALL_HEADER_RECIPIENTS=("${TO_RECIPIENTS[@]}" "${CC_RECIPIENTS[@]}" "${BCC_RECIPIENTS[@]}")
+    
+    if [[ ${#ALL_HEADER_RECIPIENTS[@]} -gt 0 ]]; then
+        RECIPIENTS=("${ALL_HEADER_RECIPIENTS[@]}")
+    fi
+fi
+
+# Map local users to Gmail
+map_local_user() {
+    local user="$1"
+    case "$user" in
+        will|root|postmaster|admin|administrator)
+            echo "wemcdonald@gmail.com"
+            ;;
+        *)
+            # For any unknown local user, also send to Gmail
+            echo "wemcdonald@gmail.com"
+            ;;
+    esac
+}
+
+# Process recipients - map local users to Gmail
+FINAL_RECIPIENTS=()
+for recipient in "${RECIPIENTS[@]}"; do
+    # Clean up recipient
+    clean_recipient=$(echo "$recipient" | sed -E 's/^[[:space:]]*//;s/[[:space:]]*$//;s/[<>]//g')
+    
+    # If it's a local user (no @ sign), map it
+    if [[ "$clean_recipient" != *"@"* ]]; then
+        mapped=$(map_local_user "$clean_recipient")
+        FINAL_RECIPIENTS+=("$mapped")
+    else
+        FINAL_RECIPIENTS+=("$clean_recipient")
+    fi
+done
+
+# If still no recipients, use default
+if [[ ${#FINAL_RECIPIENTS[@]} -eq 0 ]]; then
+    FINAL_RECIPIENTS=("$DEFAULT_TO")
+fi
+
+# Set from address if not specified
+if [[ -z "$FROM_ADDRESS" ]]; then
+    # Try to extract from headers
+    FROM_ADDRESS=$(echo "$EMAIL_CONTENT" | grep -i "^From:" | head -1 | cut -d: -f2- | sed -E 's/^[[:space:]]*//;s/[[:space:]]*$//;s/.*<(.*)>.*/\1/;s/[<>]//g' || true)
+    if [[ -z "$FROM_ADDRESS" ]]; then
+        FROM_ADDRESS="$DEFAULT_FROM"
+    fi
+fi
+
+# Extract subject
+SUBJECT=$(echo "$EMAIL_CONTENT" | grep -i "^Subject:" | head -1 | cut -d: -f2- | sed 's/^[[:space:]]*//' || true)
+if [[ -z "$SUBJECT" ]]; then
+    SUBJECT="System notification from $(hostname)"
+fi
+
+# Get message body (everything after first blank line)
+BODY=$(echo "$EMAIL_CONTENT" | awk '/^$/ { found=1; next } found { print }')
+
+# If no body found in email format, use entire content
+if [[ -z "$BODY" ]]; then
+    BODY="$EMAIL_CONTENT"
+fi
+
+# Log the mail attempt
+log "Sending mail - From: $FROM_ADDRESS, To: ${FINAL_RECIPIENTS[*]}, Subject: $SUBJECT"
+
+# Check if smtp-relay container is running
+if ! docker ps --format "table {{.Names}}" | grep -q "^smtp-relay$"; then
+    log "ERROR: smtp-relay container is not running"
+    exit 1
+fi
+
+# Send email through smtp-relay container using curl (proper SMTP protocol)
+success_count=0
+for recipient in "${FINAL_RECIPIENTS[@]}"; do
+    if [[ -n "$recipient" ]]; then
+        log "Sending to: $recipient"
+
+        # Build the email message
+        EMAIL_MSG=$(cat << EOF
+From: $FROM_ADDRESS
+To: $recipient
+Subject: $SUBJECT
+Date: $(date -R)
+
+$BODY
+EOF
+)
+
+        # Send via curl SMTP (handles protocol correctly, unlike netcat)
+        if echo "$EMAIL_MSG" | curl --silent --show-error \
+            --url "smtp://${SMTP_RELAY_HOST}:${SMTP_RELAY_PORT}" \
+            --mail-from "$FROM_ADDRESS" \
+            --mail-rcpt "$recipient" \
+            -T - 2>/dev/null; then
+            log "Successfully sent to: $recipient"
+            success_count=$((success_count + 1))
+        else
+            log "ERROR: Failed to send to: $recipient"
+        fi
+    fi
+done
+
+# Exit with appropriate code
+if [[ $success_count -eq ${#FINAL_RECIPIENTS[@]} ]]; then
+    log "All messages sent successfully ($success_count/${#FINAL_RECIPIENTS[@]})"
+    exit 0
+elif [[ $success_count -gt 0 ]]; then
+    log "Partial success: $success_count/${#FINAL_RECIPIENTS[@]} messages sent"
+    exit 0  # Don't fail completely on partial success
+else
+    log "ERROR: Failed to send all messages"
+    exit 1
+fi

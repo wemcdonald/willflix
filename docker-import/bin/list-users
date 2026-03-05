@@ -1,0 +1,21 @@
+#!/bin/bash
+
+# List all authentik users with username and email
+# Usage: ./bin/list-users
+
+set -e
+
+# Check if authentik container is running
+if ! docker ps --format "table {{.Names}}" | grep -q "config-authentik-server-1"; then
+    echo "Error: authentik server container is not running" >&2
+    exit 1
+fi
+
+# Execute Django shell command to list users (suppress Django logs)
+docker exec config-authentik-server-1 ak shell -c "
+from authentik.core.models import User
+users = User.objects.filter(is_active=True).order_by('username')
+for user in users:
+    if user.username != 'AnonymousUser' and user.email and user.email.strip():
+        print(f'{user.username} {user.email}')
+" 2>/dev/null

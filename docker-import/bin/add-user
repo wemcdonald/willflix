@@ -1,0 +1,179 @@
+#!/bin/bash
+
+# Add User to Both Authentik and Calibre-Web
+# Usage: ./add-user <username> <email> [role]
+# Role options: admin, user (default: user)
+
+set -e
+
+# Load configuration
+source /docker/config/secrets/authentik_api_env
+
+# Check required environment variables
+if [ -z "$AUTHENTIK_API_KEY" ] || [ -z "$AUTHENTIK_WILLFLIX_GROUP_ID" ] || [ -z "$CALIBRE_USER_ROLE" ] || [ -z "$CALIBRE_ADMIN_ROLE" ]; then
+    echo -e "\033[0;31m[ERROR]\033[0m Missing required environment variables:"
+    [ -z "$AUTHENTIK_API_KEY" ] && echo "  - AUTHENTIK_API_KEY not set"
+    [ -z "$AUTHENTIK_WILLFLIX_GROUP_ID" ] && echo "  - AUTHENTIK_WILLFLIX_GROUP_ID not set"
+    [ -z "$CALIBRE_USER_ROLE" ] && echo "  - CALIBRE_USER_ROLE not set"
+    [ -z "$CALIBRE_ADMIN_ROLE" ] && echo "  - CALIBRE_ADMIN_ROLE not set"
+    echo "Please check /docker/config/secrets/authentik_api_env"
+    exit 1
+fi
+
+# Colors for output
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+NC='\033[0m' # No Color
+
+# Function to print colored output  
+print_status() {
+    echo -e "${GREEN}[INFO]${NC} $1"
+}
+
+print_warning() {
+    echo -e "${YELLOW}[WARN]${NC} $1"
+}
+
+print_error() {
+    echo -e "${RED}[ERROR]${NC} $1"
+}
+
+# Check arguments
+if [ $# -lt 2 ] || [ $# -gt 3 ]; then
+    echo "Usage: $0 <username> <email> [role]"
+    echo "Role options: admin, user (default: user)"
+    exit 1
+fi
+
+USERNAME="$1"
+EMAIL="$2"
+ROLE="${3:-user}"
+
+# Validate role
+if [[ "$ROLE" != "admin" && "$ROLE" != "user" ]]; then
+    print_error "Invalid role. Use 'admin' or 'user'"
+    exit 1
+fi
+
+# Check if add-calibre-user script exists
+if [ ! -f "/docker/bin/add-calibre-user" ]; then
+    print_error "add-calibre-user script not found at /docker/bin/add-calibre-user"
+    exit 1
+fi
+
+print_status "Creating user: $USERNAME ($EMAIL) with role: $ROLE"
+
+# Generate display name (capitalize first letter)
+DISPLAY_NAME=$(echo "$USERNAME" | sed 's/\b\w/\U&/g')
+
+# Create user in Authentik
+print_status "Creating user in Authentik..."
+
+# Prepare user creation payload
+USER_PAYLOAD=$(cat <<EOF
+{
+    "username": "$USERNAME",
+    "name": "$DISPLAY_NAME", 
+    "email": "$EMAIL",
+    "type": "external"
+}
+EOF
+)
+
+# Create user via Authentik API
+AUTHENTIK_RESPONSE=$(curl -s -H "Authorization: Bearer $AUTHENTIK_API_KEY" \
+    -H "Content-Type: application/json" \
+    -X POST \
+    "https://auth.willflix.org/api/v3/core/users/" \
+    -d "$USER_PAYLOAD")
+
+# Check if user creation succeeded
+if echo "$AUTHENTIK_RESPONSE" | jq -e '.uuid' > /dev/null 2>&1; then
+    USER_UUID=$(echo "$AUTHENTIK_RESPONSE" | jq -r '.uuid')
+    print_status "✓ User created in Authentik (UUID: $USER_UUID)"
+else
+    # Check for specific error messages
+    if echo "$AUTHENTIK_RESPONSE" | jq -e '.username' > /dev/null 2>&1; then
+        print_error "Username '$USERNAME' already exists in Authentik"
+    elif echo "$AUTHENTIK_RESPONSE" | jq -e '.email' > /dev/null 2>&1; then
+        print_error "Email '$EMAIL' already exists in Authentik"
+    else
+        local error_detail=$(echo "$AUTHENTIK_RESPONSE" | jq -r '.detail // "Unknown error"')
+        print_error "Failed to create user in Authentik: $error_detail"
+    fi
+    exit 1
+fi
+
+# Add user to Willflix Users group
+print_status "Adding user to Willflix Users group..."
+
+GROUP_PAYLOAD=$(cat <<EOF
+{
+    "pk": "$USER_UUID"
+}
+EOF
+)
+
+GROUP_RESPONSE=$(curl -s -H "Authorization: Bearer $AUTHENTIK_API_KEY" \
+    -H "Content-Type: application/json" \
+    -X POST \
+    "https://auth.willflix.org/api/v3/core/groups/${AUTHENTIK_WILLFLIX_GROUP_ID}/add_user/" \
+    -d "$GROUP_PAYLOAD")
+
+# Check if group addition succeeded  
+if [ $? -eq 0 ]; then
+    print_status "✓ User added to Willflix Users group"
+else
+    print_warning "Failed to add user to group, but continuing..."
+fi
+
+# Create user in Calibre-Web
+print_status "Creating user in Calibre-Web..."
+
+if /docker/bin/add-calibre-user "$USERNAME" "$EMAIL" "$ROLE"; then
+    print_status "✓ User created in Calibre-Web"
+    
+    # Create user in Nextcloud
+    print_status "Creating user in Nextcloud..."
+    if /docker/bin/add-nextcloud-user "$USERNAME" "$EMAIL" "$DISPLAY_NAME"; then
+        print_status "✓ User created in Nextcloud"
+    else
+        print_warning "✗ Failed to create user in Nextcloud - user can still login via SSO"
+    fi
+    
+    # Invite user to Plex
+    print_status "Inviting user to Plex..."
+    if /docker/bin/invite-to-plex "$EMAIL"; then
+        print_status "✓ Plex invitation sent to: $EMAIL"
+    else
+        print_warning "✗ Failed to invite to Plex: $EMAIL"
+    fi
+else
+    print_error "Failed to create user in Calibre-Web"
+    
+    # Rollback: Delete user from Authentik
+    print_warning "Rolling back: Deleting user from Authentik..."
+    curl -s -H "Authorization: Bearer $AUTHENTIK_API_KEY" \
+        -X DELETE \
+        "https://auth.willflix.org/api/v3/core/users/${USER_UUID}/" > /dev/null 2>&1
+    
+    if [ $? -eq 0 ]; then
+        print_warning "✓ User rolled back from Authentik"
+    else
+        print_error "✗ Failed to rollback user from Authentik - manual cleanup required"
+        print_error "Please manually delete user UUID: $USER_UUID"
+    fi
+    
+    exit 1
+fi
+
+print_status ""
+print_status "User creation completed successfully!"
+print_status "Authentik UUID: $USER_UUID"  
+print_status ""
+print_status "Notes:"
+print_status "- User created with type 'external' in Authentik"
+print_status "- User added to 'Willflix Users' group"
+print_status "- User will authenticate via SSO"
+print_status "- No password required - SSO handles authentication"
