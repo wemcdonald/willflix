@@ -2,6 +2,11 @@
 docker/appdata/
 docker/logs/
 
+# Compat symlinks (filesystem glue for old /docker/config paths)
+docker/config/
+docker/docker-compose.yml
+docker/secrets
+
 # Build artifacts
 *.log
 *.tmp
