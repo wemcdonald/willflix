@@ -25,8 +25,9 @@ fi
 
 while IFS= read -r line; do
     [[ -z "$line" ]] && continue
-    # Format: "unit.service loaded failed failed Description..."
-    unit=$(echo "$line" | awk '{print $1}')
+    # Format: "● unit.service loaded failed failed Description..."
+    # The ● bullet is the first field, unit name is the second
+    unit=$(echo "$line" | awk '{print $2}')
     [[ -n "${IGNORED[$unit]:-}" ]] && continue
 
     "$NOTIFY" --severity WARNING --key "systemd-failed-${unit}" \

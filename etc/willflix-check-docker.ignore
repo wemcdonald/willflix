@@ -1,5 +1,9 @@
 # Containers to ignore in health checks.
 # One container name per line. Comments start with #.
 # These are intentionally stopped or known-problematic.
-whoami
+# Use actual container names (not compose service names).
+# Run: docker ps -a --format '{{.Names}}' to see names.
+config-whoami-1
 confident_agnesi
+calibre
+calibre-web-automated
