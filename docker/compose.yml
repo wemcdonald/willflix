@@ -45,41 +45,8 @@ secrets:
     file: ./secrets/supabase_jwt_secret
 
 services:
-  backup:
-    image: mazzolino/restic
-    hostname: docker
-    restart: unless-stopped
-    container_name: restic-backup
-    volumes:
-      - /home/will/.config/rclone:/root/.config/rclone
-      - /Volumes/Bonus1/lafayette:/Volumes/Bonus1/lafayette
-      - /willflix:/willflix:ro
-    secrets:
-      - restic_password
-    environment:
-      RUN_ON_STARTUP: "true"
-      BACKUP_CRON: "0 30 3 * * *"
-      RESTIC_REPOSITORY: /Volumes/Bonus1/lafayette
-      RESTIC_PASSWORD_FILE: /run/secrets/restic_password
-      RESTIC_BACKUP_SOURCES: /willflix
-      RESTIC_COMPRESSION: max
-      RESTIC_PACK_SIZE: 64
-      RESTIC_BACKUP_ARGS: >-
-        --exclude /willflix/.git
-        --exclude '**/node_modules'
-        --exclude '**/.next'
-        --exclude '**/__pycache__'
-        --exclude '**/.cache'
-        --exclude '**/Cache'
-        --exclude '*.gz'
-        --no-scan
-        --cleanup-cache
-      RESTIC_FORGET_ARGS: >-
-        --keep-last 10
-        --keep-daily 14
-        --keep-weekly 8
-        --keep-monthly 24
-      TZ: America/Los_Angeles
+  # backup: retired — replaced by host-based bin/cron/backup_restic
+  # which backs up root SSD + Plex SSD + irreplaceable media to Bonus1 + B2
 
   traefik:
     image: traefik:v2.10

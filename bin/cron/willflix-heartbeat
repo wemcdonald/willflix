@@ -44,6 +44,7 @@ MONITORS=(
     "willflix-check-systemd 45"
     "willflix-check-backups 2880"
     "check_media_apps 720"
+    "backup_restic 2880"
 )
 
 STALE=""

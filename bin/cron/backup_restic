@@ -1,0 +1,140 @@
+#!/bin/bash
+# backup_restic — whole-system restic backup to local + B2 offsite.
+# Replaces the Docker-based restic-backup container.
+#
+# Backs up: root SSD, Plex SSD, irreplaceable media pool dirs
+# Targets: local (Bonus1) + remote (Backblaze B2)
+# Schedule: daily 3:30am via cron
+
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+NOTIFY="$(cd "$SCRIPT_DIR/.." && pwd)/willflix-notify"
+MONITOR_STAMP="/var/tmp/willflix-monitors/backup_restic"
+
+LOCAL_REPO="/Volumes/Bonus1/lafayette"
+REMOTE_REPO="b2:willflix-backup:lafayette"
+PASSWORD_FILE="/willflix/secrets/restic_password"
+
+export RESTIC_PASSWORD_FILE="$PASSWORD_FILE"
+export B2_ACCOUNT_ID="$(cat /willflix/secrets/b2_account_id)"
+export B2_ACCOUNT_KEY="$(cat /willflix/secrets/b2_application_key)"
+
+LOGFILE="/var/log/backup-restic.log"
+
+# Sources to back up
+SOURCES=(
+    /                               # Root SSD (with exclusions below)
+    /Volumes/Plex                   # Plex SSD
+    "/Volumes/Media/Photos"         # Irreplaceable personal photos
+    "/Volumes/Media/Google Photos"  # Backup of Google (canonical is Google)
+    "/Volumes/Media/Code"           # Old code backups
+)
+
+# Exclusions
+EXCLUDES=(
+    # Virtual/transient filesystems
+    --exclude /proc
+    --exclude /sys
+    --exclude /dev
+    --exclude /run
+    --exclude /tmp
+    --exclude /mnt
+
+    # Mount points (handled explicitly in SOURCES)
+    --exclude '/Volumes/*'
+
+    # Docker internals (images, layers, containers — all regenerable)
+    --exclude /var/lib/docker
+    --exclude /var/lib/containerd
+
+    # Regenerable system dirs
+    --exclude /var/log
+    --exclude /var/cache
+    --exclude /snap
+    --exclude /var/snap
+
+    # Dead directory pending deletion
+    --exclude /docker.old
+
+    # Git repos (code is on GitHub)
+    --exclude /willflix/.git
+
+    # Build artifacts and caches
+    --exclude '**/node_modules'
+    --exclude '**/.next'
+    --exclude '**/__pycache__'
+    --exclude '**/.cache'
+    --exclude '**/Cache'
+
+    # Plex transcode cache (transient)
+    --exclude '/Volumes/Plex/Plex Media Server/Cache/Transcode'
+
+    # Swap and temp
+    --exclude '*.swp'
+    --exclude /swapfile
+)
+
+FORGET_ARGS=(
+    --keep-last 10
+    --keep-daily 14
+    --keep-weekly 8
+    --keep-monthly 24
+)
+
+notify_failure() {
+    local msg="$1"
+    echo "$(date): FAILURE: $msg" >> "$LOGFILE"
+    "$NOTIFY" --severity CRITICAL --key "backup-restic-fail" \
+        --subject "Restic backup failed on $(hostname)" \
+        --body "$msg
+
+Check the log:
+  tail -50 $LOGFILE"
+}
+
+log() {
+    echo "$(date): $*" >> "$LOGFILE"
+}
+
+# --- Main ---
+
+log "Starting restic backup"
+
+# Local backup
+log "Backing up to local repo: $LOCAL_REPO"
+if ! restic -r "$LOCAL_REPO" backup \
+    "${SOURCES[@]}" \
+    "${EXCLUDES[@]}" \
+    --one-file-system=false \
+    --no-scan \
+    --cleanup-cache \
+    >> "$LOGFILE" 2>&1; then
+    notify_failure "Local restic backup failed"
+    exit 1
+fi
+
+log "Local backup complete, applying retention"
+restic -r "$LOCAL_REPO" forget "${FORGET_ARGS[@]}" --prune >> "$LOGFILE" 2>&1 || true
+
+# Remote backup (B2)
+log "Backing up to remote repo: $REMOTE_REPO"
+if ! restic -r "$REMOTE_REPO" backup \
+    "${SOURCES[@]}" \
+    "${EXCLUDES[@]}" \
+    --one-file-system=false \
+    --no-scan \
+    --cleanup-cache \
+    >> "$LOGFILE" 2>&1; then
+    notify_failure "Remote (B2) restic backup failed"
+    # Don't exit — local backup succeeded, just warn
+fi
+
+log "Remote backup complete, applying retention"
+restic -r "$REMOTE_REPO" forget "${FORGET_ARGS[@]}" --prune >> "$LOGFILE" 2>&1 || true
+
+log "Restic backup completed successfully"
+
+# Touch freshness stamp
+install -d -m 1777 "$(dirname "$MONITOR_STAMP")"
+touch "$MONITOR_STAMP"
