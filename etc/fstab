@@ -1,0 +1,50 @@
+# /etc/fstab: static file system information.
+#
+# Use 'blkid' to print the universally unique identifier for a
+# device; this may be used with UUID= as a more robust way to name devices
+# that works even if disks are added and removed. See fstab(5).
+#
+# <file system> <mount point>   <type>  <options>       <dump>  <pass>
+/dev/mapper/vgubuntu-root /               ext4    errors=remount-ro 0       1
+# /boot/efi was on /dev/sdm1 during installation
+UUID=E5F6-B2F0  /boot/efi       vfat    umask=0077      0       1
+/dev/mapper/vgubuntu-swap_1 none            swap    sw              0       0
+
+#/dev/mapper/pve-root /Volumes/OldRoot ext4 defaults 0 0
+
+#=#=# BEGIN WILLFLIX
+# Media drives
+LABEL=MediaA        /Volumes/MediaA          ext4    defaults,nofail,x-systemd.device-timeout=30s,x-systemd.mount-timeout=30s        0       2
+LABEL=MediaB        /Volumes/MediaB          ext4    defaults,nofail,x-systemd.device-timeout=30s,x-systemd.mount-timeout=30s        0       2
+LABEL=MediaC        /Volumes/MediaC          ext4    defaults,nofail,x-systemd.device-timeout=30s,x-systemd.mount-timeout=30s        0       2
+LABEL=MediaD        /Volumes/MediaD          ext4    defaults,nofail,x-systemd.device-timeout=30s,x-systemd.mount-timeout=30s        0       2
+LABEL=MediaE        /Volumes/MediaE          ext4    defaults,nofail,x-systemd.device-timeout=30s,x-systemd.mount-timeout=30s        0       2
+LABEL=MediaF        /Volumes/MediaF          ext4    defaults,nofail,x-systemd.device-timeout=30s,x-systemd.mount-timeout=30s        0       2
+LABEL=MediaG        /Volumes/MediaG          ext4    defaults,nofail,x-systemd.device-timeout=30s,x-systemd.mount-timeout=30s        0       2
+LABEL=MediaH        /Volumes/MediaH          ext4    defaults,nofail,x-systemd.device-timeout=30s,x-systemd.mount-timeout=30s        0       2
+LABEL=MediaI        /Volumes/MediaI          ext4    defaults,nofail,x-systemd.device-timeout=30s,x-systemd.mount-timeout=30s        0       2
+LABEL=MediaJ        /Volumes/MediaJ          ext4    defaults,nofail,x-systemd.device-timeout=30s,x-systemd.mount-timeout=30s        0       2
+LABEL=MediaK        /Volumes/MediaK          ext4    defaults,nofail,x-systemd.device-timeout=30s,x-systemd.mount-timeout=30s        0       2
+LABEL=MediaParity1  /Volumes/MediaParity1    ext4    defaults,nofail,x-systemd.device-timeout=30s,x-systemd.mount-timeout=30s        0       2
+LABEL=MediaParity2  /Volumes/MediaParity2    ext4    defaults,nofail,x-systemd.device-timeout=30s,x-systemd.mount-timeout=30s        0       2
+LABEL=MediaParity3  /Volumes/MediaParity3    ext4    defaults,nofail,x-systemd.device-timeout=30s,x-systemd.mount-timeout=30s        0       2
+LABEL=MediaSpare    /Volumes/MediaSpare      ext4    defaults,nofail,x-systemd.device-timeout=30s,x-systemd.mount-timeout=30s        0       2 # !!
+
+LABEL=Bonus1        /Volumes/Bonus1      ext4    defaults,nofail,x-systemd.device-timeout=30s,x-systemd.mount-timeout=30s        0       2 # !!
+
+LABEL=Plex          /Volumes/Plex            ext4    defaults,nofail,x-systemd.device-timeout=30s,x-systemd.mount-timeout=30s,errors=remount-ro 0 2
+#LABEL=NewPlex       /Volumes/NewPlex         ext4    defaults,nofail,x-systemd.device-timeout=30s,x-systemd.mount-timeout=30s,errors=remount-ro 0 2
+#
+## RAMdisk
+none 		    /Volumes/PlexTranscode   tmpfs    nodev,nosuid,noexec,nodiratime,size=20G 0 0
+#
+## MergerFS
+/Volumes/Media[A-Z]     /Volumes/Media            fuse.mergerfs defaults,category.create=mspmfs,allow_other,minfreespace=50G,fsname=MediaFS,nonempty,moveonenospc=true,func.getattr=newest,use_ino,noforget,inodecalc=path-hash 0 0
+# create policy "mspmfs == Of all the branches on which the relative path exists choose the drive with the most free space. but walk back the path if it fails to find a branch at that level.
+# minfreespace == filter the drive out of consideration for create requests, but doesn't cause any errors when writing
+# moveonnospc == move files according to policy IF it generates a filesystem full error
+# nonempty == allow mounting over non-empty directories (/Volumes/Media). Allows for upgrading Mergerfs
+#inodecalc=path-hash,useino,noforget to fix NFS export of Media
+#func.getattr=newset to fix directory mtime for Plex scanning
+#If wanting to use Plex DB on MediaFS, add dropcacheonclose=true to disable direct_ii
+#=#=# END WILLFLIX
