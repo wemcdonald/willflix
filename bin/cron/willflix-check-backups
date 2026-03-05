@@ -1,0 +1,48 @@
+#!/bin/bash
+# willflix-check-backups — monitor backup freshness via timestamp files.
+# Reads config file for expected backup jobs and their freshness thresholds.
+# Run daily at 9:15am via cron.
+
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+NOTIFY="$(cd "$SCRIPT_DIR/.." && pwd)/willflix-notify"
+MONITOR_STAMP="/var/tmp/willflix-monitors/willflix-check-backups"
+CONFIG_FILE="$(cd "$SCRIPT_DIR/../../etc" && pwd)/willflix-check-backups.conf"
+
+if [[ ! -f "$CONFIG_FILE" ]]; then
+    "$NOTIFY" --severity WARNING --key "backup-config-missing" \
+        --subject "Backup monitor config missing on $(hostname)" \
+        --body "Expected config at $CONFIG_FILE"
+    exit 1
+fi
+
+STALE=""
+
+while IFS= read -r line; do
+    # Skip comments and blank lines
+    line="${line%%#*}"
+    [[ -z "${line// /}" ]] && continue
+
+    read -r name max_hours stamp_path <<< "$line"
+
+    if [[ ! -e "$stamp_path" ]]; then
+        STALE="${STALE}  ${name}: never ran (${stamp_path} not found)\n"
+        continue
+    fi
+
+    age_hours=$(( ($(date +%s) - $(stat -c %Y "$stamp_path")) / 3600 ))
+    if [[ "$age_hours" -gt "$max_hours" ]]; then
+        STALE="${STALE}  ${name}: last ran ${age_hours}h ago (threshold: ${max_hours}h)\n"
+    fi
+done < "$CONFIG_FILE"
+
+if [[ -n "$STALE" ]]; then
+    "$NOTIFY" --severity WARNING --key "backup-freshness-fail" \
+        --subject "Backup freshness check failed on $(hostname)" \
+        --body "$(echo -e "The following backups are stale or missing:\n\n${STALE}\nCheck that backup cron jobs are running:\n  crontab -l\n  sudo crontab -l\n  docker logs restic-backup --tail 10")"
+fi
+
+# Touch freshness stamp
+mkdir -p "$(dirname "$MONITOR_STAMP")"
+touch "$MONITOR_STAMP"
