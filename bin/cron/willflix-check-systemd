@@ -1,0 +1,43 @@
+#!/bin/bash
+# willflix-check-systemd — monitor for failed systemd units.
+# Filters out known-legacy units from ignore list.
+# Run every 15 minutes via cron.
+
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+NOTIFY="$(cd "$SCRIPT_DIR/.." && pwd)/willflix-notify"
+MONITOR_STAMP="/var/tmp/willflix-monitors/willflix-check-systemd"
+IGNORE_FILE="$(cd "$SCRIPT_DIR/../../etc" && pwd)/willflix-check-systemd.ignore"
+
+# --- Load ignore list ---
+
+declare -A IGNORED
+if [[ -f "$IGNORE_FILE" ]]; then
+    while IFS= read -r line; do
+        line="${line%%#*}"
+        line="${line// /}"
+        [[ -n "$line" ]] && IGNORED["$line"]=1
+    done < "$IGNORE_FILE"
+fi
+
+# --- Check for failed units ---
+
+while IFS= read -r line; do
+    [[ -z "$line" ]] && continue
+    # Format: "unit.service loaded failed failed Description..."
+    unit=$(echo "$line" | awk '{print $1}')
+    [[ -n "${IGNORED[$unit]:-}" ]] && continue
+
+    "$NOTIFY" --severity WARNING --key "systemd-failed-${unit}" \
+        --subject "Systemd: ${unit} failed on $(hostname)" \
+        --body "Systemd unit '${unit}' is in failed state.
+
+Check:
+  systemctl status ${unit}
+  journalctl -u ${unit} --no-pager -n 30"
+done < <(systemctl --failed --no-legend 2>/dev/null)
+
+# Touch freshness stamp
+mkdir -p "$(dirname "$MONITOR_STAMP")"
+touch "$MONITOR_STAMP"
