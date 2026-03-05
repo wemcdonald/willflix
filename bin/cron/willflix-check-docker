@@ -7,7 +7,7 @@
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 NOTIFY="$(cd "$SCRIPT_DIR/.." && pwd)/willflix-notify"
 MONITOR_STAMP="/var/tmp/willflix-monitors/willflix-check-docker"
-COMPOSE_FILE="/docker/config/docker-compose.yml"
+COMPOSE_FILE="/willflix/docker/compose.yml"
 IGNORE_FILE="$(cd "$SCRIPT_DIR/../../etc" && pwd)/willflix-check-docker.ignore"
 
 # --- Load ignore list ---
@@ -65,7 +65,7 @@ for container in "${EXPECTED[@]}"; do
 It may have been removed or never started.
 
 Check:
-  cd /docker/config && docker compose ps ${container}
+  cd /willflix/docker && docker compose ps ${container}
   docker compose up -d ${container}"
         continue
     fi
@@ -90,7 +90,7 @@ Status: ${status}
 
 Check:
   docker logs ${container} --tail 30
-  cd /docker/config && docker compose up -d ${container}"
+  cd /willflix/docker && docker compose up -d ${container}"
         continue
     fi
 
