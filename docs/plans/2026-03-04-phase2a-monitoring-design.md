@@ -35,7 +35,7 @@ Add monitoring for Docker containers, systemd units, and backup freshness. All m
 
 ## willflix-check-docker
 
-**Source:** Auto-discovers expected services from `/docker/config/docker-compose.yml` by extracting top-level service names (2-space indented, no further indent).
+**Source:** Auto-discovers expected services from `/willflix/docker/compose.yml` by extracting top-level service names (2-space indented, no further indent).
 
 **Ignore list:** `etc/willflix-check-docker.ignore` — one container name per line, `#` comments.
 
@@ -124,11 +124,11 @@ restic_backup        36  /var/tmp/willflix-monitors/restic_backup
 
 ```
 # Service health checks (every 15 min)
-*/15 * * * * /home/will/bin/cron/willflix-check-docker
-*/15 * * * * /home/will/bin/cron/willflix-check-systemd
+*/15 * * * * /willflix/bin/cron/willflix-check-docker
+*/15 * * * * /willflix/bin/cron/willflix-check-systemd
 
 # Backup freshness (daily, after heartbeat)
-15 9 * * * /home/will/bin/cron/willflix-check-backups
+15 9 * * * /willflix/bin/cron/willflix-check-backups
 ```
 
 ---

@@ -74,7 +74,7 @@ LOGFILE="/var/log/snapraid-daily.log"
 echo "$(date): Starting snapraid daily" >> "$LOGFILE"
 
 # check_for_deletes with timeout
-if ! timeout "$TIMEOUT" /home/will/bin/cron/check_for_deletes 2>> "$LOGFILE"; then
+if ! timeout "$TIMEOUT" /willflix/bin/cron/check_for_deletes 2>> "$LOGFILE"; then
     echo "$(date): check_for_deletes failed or timed out" >> "$LOGFILE"
     echo "snapraid check_for_deletes failed or timed out on $(hostname)" | \
         /usr/sbin/sendmail wemcdonald@gmail.com
@@ -130,7 +130,7 @@ fi
 
 Add to root crontab:
 ```
-30 8 * * * /home/will/bin/cron/check_snapraid_freshness
+30 8 * * * /willflix/bin/cron/check_snapraid_freshness
 ```
 
 **A3. Rewrite `check_for_deletes` with timeout and I/O error handling**
@@ -243,7 +243,7 @@ fi
 
 Add to root crontab:
 ```
-*/15 * * * * /home/will/bin/cron/check_mergerfs_health
+*/15 * * * * /willflix/bin/cron/check_mergerfs_health
 ```
 
 ### D. Mail Reliability (addresses #5)

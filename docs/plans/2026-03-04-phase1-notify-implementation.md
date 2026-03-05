@@ -437,8 +437,8 @@ journalctl -t willflix-notify --no-pager | tail -5
 #   willflix-heartbeat --silent   # Mon-Sat: freshness + watchdog only, alert on failures
 #
 # Cron:
-#   0 9 * * 0   /home/will/bin/cron/willflix-heartbeat --full
-#   0 9 * * 1-6 /home/will/bin/cron/willflix-heartbeat --silent
+#   0 9 * * 0   /willflix/bin/cron/willflix-heartbeat --full
+#   0 9 * * 1-6 /willflix/bin/cron/willflix-heartbeat --silent
 
 set -euo pipefail
 
@@ -709,7 +709,7 @@ Check the log:
 echo "$(date): Starting snapraid daily" >> "$LOGFILE"
 
 # check_for_deletes (has its own 1hr timeout)
-if ! /home/will/bin/cron/check_for_deletes >> "$LOGFILE" 2>&1; then
+if ! /willflix/bin/cron/check_for_deletes >> "$LOGFILE" 2>&1; then
     notify_failure "check_for_deletes failed or timed out"
     exit 1
 fi
@@ -763,7 +763,7 @@ NOTIFY="$(cd "$SCRIPT_DIR/.." && pwd)/willflix-notify"
 SCRUB_TIMEOUT=43200  # 12 hours max for scrub
 LOGFILE="/var/log/snapraid-daily.log"
 
-/home/will/bin/cron/snapraid_daily
+/willflix/bin/cron/snapraid_daily
 
 echo "$(date): Starting snapraid scrub" >> "$LOGFILE"
 
@@ -874,8 +874,8 @@ Add to `etc/root-crontab`:
 
 ```
 # Heartbeat — weekly channel test (Sun 9am), daily freshness + watchdog (Mon-Sat 9am)
-0 9 * * 0 /home/will/bin/cron/willflix-heartbeat --full
-0 9 * * 1-6 /home/will/bin/cron/willflix-heartbeat --silent
+0 9 * * 0 /willflix/bin/cron/willflix-heartbeat --full
+0 9 * * 1-6 /willflix/bin/cron/willflix-heartbeat --silent
 ```
 
 **Step 2: Update AGENTS.md alerting section**

@@ -24,7 +24,7 @@ If you need to set up manually or understand what the script does:
 
 1. **Prerequisites**: Ensure smtp-relay container is running in your Docker compose
 2. **Install System**: Run `/docker/setup/mail-setup.sh`
-3. **Test Setup**: Run `/docker/bin/test-mail`
+3. **Test Setup**: Run `/willflix/bin/test-mail`
 4. **Monitor**: `sudo tail -f /docker/logs/mail.log`
 
 ## Architecture
@@ -34,7 +34,7 @@ System Services (cron, smartd, etc.)
          ↓
     sendmail command
          ↓
-  /docker/bin/sendmail-system
+  /willflix/bin/sendmail-system
          ↓
     smtp-relay container
          ↓
@@ -55,18 +55,18 @@ All local users map to your specified Gmail address:
 - All other users → `your-email@gmail.com`
 
 ### Key Files
-- `/docker/config/sendmail-system-template` - Template for sendmail wrapper
-- `/docker/bin/sendmail-system` - Main sendmail wrapper (created from template)
-- `/docker/config/postfix-disable-incoming.sh` - Generic Postfix configuration script
+- `/willflix/docker/sendmail-system-template` - Template for sendmail wrapper
+- `/willflix/bin/sendmail-system` - Main sendmail wrapper (created from template)
+- `/willflix/docker/postfix-disable-incoming.sh` - Generic Postfix configuration script
 - `/docker/logs/mail.log` - Mail activity log
-- `/docker/bin/test-mail` - Test utility
+- `/willflix/bin/test-mail` - Test utility
 - `/docker/setup/mail-setup.sh` - Setup script
 
 ## Testing
 
 ```bash
 # Run comprehensive tests
-/docker/bin/test-mail
+/willflix/bin/test-mail
 
 # Quick test
 echo "Test message" | sendmail will

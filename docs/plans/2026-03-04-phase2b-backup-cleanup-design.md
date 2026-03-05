@@ -65,7 +65,7 @@ gunzip -c authentik-2026-03-04.sql.gz | docker exec -i config-postgres-1 psql -U
 
 ## Ofelia
 
-Comment out the entire ofelia service in `/docker/config/docker-compose.yml`. Run `docker compose stop ofelia`. Since it's no longer a defined service, the Docker health check won't look for it.
+Comment out the entire ofelia service in `/willflix/docker/compose.yml`. Run `docker compose stop ofelia`. Since it's no longer a defined service, the Docker health check won't look for it.
 
 ---
 
@@ -92,7 +92,7 @@ Comment out the entire ofelia service in `/docker/config/docker-compose.yml`. Ru
 - `etc/willflix-check-systemd.ignore` — remove cleaned-up units
 
 **Manual (outside this repo):**
-- `/docker/config/docker-compose.yml` — comment out ofelia
+- `/willflix/docker/compose.yml` — comment out ofelia
 - `docker compose stop ofelia`
 - `systemctl disable` + `dpkg --purge` for legacy units
 - `sudo crontab etc/root-crontab`

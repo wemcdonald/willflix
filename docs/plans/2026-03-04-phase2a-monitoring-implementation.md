@@ -55,7 +55,7 @@ git commit -m "Add Docker health check ignore list"
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 NOTIFY="$(cd "$SCRIPT_DIR/.." && pwd)/willflix-notify"
 MONITOR_STAMP="/var/tmp/willflix-monitors/willflix-check-docker"
-COMPOSE_FILE="/docker/config/docker-compose.yml"
+COMPOSE_FILE="/willflix/docker/compose.yml"
 IGNORE_FILE="$(cd "$SCRIPT_DIR/../../etc" && pwd)/willflix-check-docker.ignore"
 
 # --- Load ignore list ---
@@ -113,7 +113,7 @@ for container in "${EXPECTED[@]}"; do
 It may have been removed or never started.
 
 Check:
-  cd /docker/config && docker compose ps ${container}
+  cd /willflix/docker && docker compose ps ${container}
   docker compose up -d ${container}"
         continue
     fi
@@ -138,7 +138,7 @@ Status: ${status}
 
 Check:
   docker logs ${container} --tail 30
-  cd /docker/config && docker compose up -d ${container}"
+  cd /willflix/docker && docker compose up -d ${container}"
         continue
     fi
 
@@ -427,14 +427,14 @@ Create `etc/will-crontab-additions.txt` as a reference:
 # Apply with: crontab -e
 #
 # BEFORE:
-#   0 0 * * * /usr/local/bin/cronic /home/will/bin/cron/backup_calibre
+#   0 0 * * * /usr/local/bin/cronic /willflix/bin/cron/backup_calibre
 # AFTER:
-#   0 0 * * * /usr/local/bin/cronic /home/will/bin/cron/backup_calibre && touch /var/tmp/willflix-monitors/backup_calibre
+#   0 0 * * * /usr/local/bin/cronic /willflix/bin/cron/backup_calibre && touch /var/tmp/willflix-monitors/backup_calibre
 
-0 0 * * * /usr/local/bin/cronic /home/will/bin/cron/backup_calibre && touch /var/tmp/willflix-monitors/backup_calibre
-0 0 * * * /usr/local/bin/cronic /home/will/bin/cron/backup_google_photos && touch /var/tmp/willflix-monitors/backup_google_photos
-30 0 * * * /usr/local/bin/cronic /home/will/bin/cron/backup_gmail && touch /var/tmp/willflix-monitors/backup_gmail
-45 0 * * * /usr/local/bin/cronic /home/will/bin/cron/backup_home && touch /var/tmp/willflix-monitors/backup_home
+0 0 * * * /usr/local/bin/cronic /willflix/bin/cron/backup_calibre && touch /var/tmp/willflix-monitors/backup_calibre
+0 0 * * * /usr/local/bin/cronic /willflix/bin/cron/backup_google_photos && touch /var/tmp/willflix-monitors/backup_google_photos
+30 0 * * * /usr/local/bin/cronic /willflix/bin/cron/backup_gmail && touch /var/tmp/willflix-monitors/backup_gmail
+45 0 * * * /usr/local/bin/cronic /willflix/bin/cron/backup_home && touch /var/tmp/willflix-monitors/backup_home
 0 1 * * * /usr/local/bin/cronic /home/will/Dropbox/system/bin/plex_db_backup.sh && touch /var/tmp/willflix-monitors/plex_db_backup
 ```
 
@@ -466,11 +466,11 @@ Add after the heartbeat entries:
 
 ```
 # Service health checks (every 15 min)
-*/15 * * * * /home/will/bin/cron/willflix-check-docker
-*/15 * * * * /home/will/bin/cron/willflix-check-systemd
+*/15 * * * * /willflix/bin/cron/willflix-check-docker
+*/15 * * * * /willflix/bin/cron/willflix-check-systemd
 
 # Backup freshness (daily after heartbeat)
-15 9 * * * /home/will/bin/cron/willflix-check-backups
+15 9 * * * /willflix/bin/cron/willflix-check-backups
 ```
 
 **Step 2: Update heartbeat freshness monitors**

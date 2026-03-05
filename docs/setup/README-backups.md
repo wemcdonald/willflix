@@ -190,7 +190,7 @@ docker exec restic-backup env | grep RESTIC
 # If container is unavailable, install restic directly:
 # sudo apt-get install restic
 # export RESTIC_REPOSITORY=/Volumes/Bonus1/lafayette
-# export RESTIC_PASSWORD_FILE=/docker/config/secrets/restic_password
+# export RESTIC_PASSWORD_FILE=/willflix/secrets/restic_password
 # restic snapshots
 ```
 

@@ -171,8 +171,8 @@ MONITOR_FRESHNESS_DIR="/var/tmp/willflix-monitors"
 
 **Cron entries:**
 ```
-0 9 * * 0   /home/will/bin/cron/willflix-heartbeat --full
-0 9 * * 1-6 /home/will/bin/cron/willflix-heartbeat --silent
+0 9 * * 0   /willflix/bin/cron/willflix-heartbeat --full
+0 9 * * 1-6 /willflix/bin/cron/willflix-heartbeat --silent
 ```
 
 ### Monitor freshness checks

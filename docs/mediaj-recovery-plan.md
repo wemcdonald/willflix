@@ -44,9 +44,9 @@ configured for d10 (`/Volumes/MediaJ/`), not to MediaSpare.
       ```
       sudo crontab -e
       # Comment out these 3 lines:
-      #   0 1 * * 0 /home/will/bin/cron/snapraid_weekly
-      #   0 1 * * 1-6 /home/will/bin/cron/snapraid_daily
-      #   30 8 * * * /home/will/bin/cron/check_snapraid_freshness
+      #   0 1 * * 0 /willflix/bin/cron/snapraid_weekly
+      #   0 1 * * 1-6 /willflix/bin/cron/snapraid_daily
+      #   30 8 * * * /willflix/bin/cron/check_snapraid_freshness
       ```
       **WHY**: snapraid_daily uses `--force-zero` and runs at 1am. If it runs
       mid-transition it could corrupt parity. check_for_deletes would likely
