@@ -896,35 +896,35 @@ services:
       - /docker/appdata/samba/init-users.sh:/etc/cont-init.d/99-init-users.sh:ro
       - samba_config:/data/config
 
-  ofelia:
-    image: mcuadros/ofelia:latest  
-    container_name: ofelia
-    restart: unless-stopped
-    volumes:
-      - /var/run/docker.sock:/var/run/docker.sock:ro
-      - /etc/localtime:/etc/localtime:ro
-      - /etc/timezone:/etc/timezone:ro
-      - /docker/appdata/ofelia/logs:/tmp/logs
-      - /docker/bin:/scripts:ro
-      - /Volumes/Media:/Volumes/Media
-    environment:
-      - TZ=America/Los_Angeles
-    entrypoint: >
-      sh -c "
-        apk add --no-cache bash docker-cli &&
-        ofelia daemon --docker
-      "
-    networks:
-      - traefik_public
-      - default
-    labels:
-      - "ofelia.smtp-host=smtp-relay"
-      - "ofelia.smtp-port=25"
-      - "ofelia.email-from=wemcdonald@gmail.com"
-      - "ofelia.email-to=wemcdonald@gmail.com"
-      - "ofelia.mail-only-on-error=true"
-      - "ofelia.save-folder=/tmp/logs"
-      - "ofelia.save-only-on-error=false"
+#  ofelia:
+#    image: mcuadros/ofelia:latest  
+#    container_name: ofelia
+#    restart: unless-stopped
+#    volumes:
+#      - /var/run/docker.sock:/var/run/docker.sock:ro
+#      - /etc/localtime:/etc/localtime:ro
+#      - /etc/timezone:/etc/timezone:ro
+#      - /docker/appdata/ofelia/logs:/tmp/logs
+#      - /docker/bin:/scripts:ro
+#      - /Volumes/Media:/Volumes/Media
+#    environment:
+#      - TZ=America/Los_Angeles
+#    entrypoint: >
+#      sh -c "
+#        apk add --no-cache bash docker-cli &&
+#        ofelia daemon --docker
+#      "
+#    networks:
+#      - traefik_public
+#      - default
+#    labels:
+#      - "ofelia.smtp-host=smtp-relay"
+#      - "ofelia.smtp-port=25"
+#      - "ofelia.email-from=wemcdonald@gmail.com"
+#      - "ofelia.email-to=wemcdonald@gmail.com"
+#      - "ofelia.mail-only-on-error=true"
+#      - "ofelia.save-folder=/tmp/logs"
+#      - "ofelia.save-only-on-error=false"
 
       # === DOCKER CONTAINER MANAGEMENT ===
       # Restart Plex at 4 AM daily (for updates)
@@ -1121,6 +1121,7 @@ services:
       - "traefik.http.routers.health-server.rule=Host(`healthdata.willflix.org`)"
       - "traefik.http.routers.health-server.entrypoints=websecure"
       - "traefik.http.routers.health-server.tls.certresolver=le"
+      - "traefik.docker.network=config_traefik_public"
     networks:
       - traefik_public
       - default
