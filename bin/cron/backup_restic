@@ -1,9 +1,9 @@
 #!/bin/bash
-# backup_restic — whole-system restic backup to local + B2 offsite.
-# Replaces the Docker-based restic-backup container.
+# backup_restic — config-driven restic backup to local + B2 offsite.
 #
-# Backs up: root SSD, Plex SSD, irreplaceable media pool dirs
-# Targets: local (Bonus1) + remote (Backblaze B2)
+# Reads per-source config from /willflix/etc/backup.d/*.conf.
+# Each source gets its own restic tag and retention policy.
+#
 # Schedule: daily 3:30am via cron
 
 set -euo pipefail
@@ -11,6 +11,8 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 NOTIFY="$(cd "$SCRIPT_DIR/.." && pwd)/willflix-notify"
 MONITOR_STAMP="/var/tmp/willflix-monitors/backup_restic"
+CONFIG_DIR="/willflix/etc/backup.d"
+LOGFILE="/var/log/backup-restic.log"
 
 LOCAL_REPO="/Volumes/Bonus1/lafayette"
 REMOTE_REPO="b2:willflix-backup:lafayette"
@@ -20,71 +22,15 @@ export RESTIC_PASSWORD_FILE="$PASSWORD_FILE"
 export B2_ACCOUNT_ID="$(cat /willflix/secrets/b2_account_id)"
 export B2_ACCOUNT_KEY="$(cat /willflix/secrets/b2_application_key)"
 
-LOGFILE="/var/log/backup-restic.log"
+# --- Helpers ---
 
-# Sources to back up
-SOURCES=(
-    /                               # Root SSD (with exclusions below)
-    /Volumes/Plex                   # Plex SSD
-    "/Volumes/Media/Photos"         # Irreplaceable personal photos
-    "/Volumes/Media/Google Photos"  # Backup of Google (canonical is Google)
-    "/Volumes/Media/Code"           # Old code backups
-)
-
-# Exclusions
-EXCLUDES=(
-    # Virtual/transient filesystems
-    --exclude /proc
-    --exclude /sys
-    --exclude /dev
-    --exclude /run
-    --exclude /tmp
-    --exclude /mnt
-
-    # Mount points (handled explicitly in SOURCES)
-    --exclude '/Volumes/*'
-
-    # Docker internals (images, layers, containers — all regenerable)
-    --exclude /var/lib/docker
-    --exclude /var/lib/containerd
-
-    # Regenerable system dirs
-    --exclude /var/log
-    --exclude /var/cache
-    --exclude /snap
-    --exclude /var/snap
-
-    # Dead directory pending deletion
-    --exclude /docker.old
-
-    # Git repos (code is on GitHub)
-    --exclude /willflix/.git
-
-    # Build artifacts and caches
-    --exclude '**/node_modules'
-    --exclude '**/.next'
-    --exclude '**/__pycache__'
-    --exclude '**/.cache'
-    --exclude '**/Cache'
-
-    # Plex transcode cache (transient)
-    --exclude '/Volumes/Plex/Plex Media Server/Cache/Transcode'
-
-    # Swap and temp
-    --exclude '*.swp'
-    --exclude /swapfile
-)
-
-FORGET_ARGS=(
-    --keep-last 10
-    --keep-daily 14
-    --keep-weekly 8
-    --keep-monthly 24
-)
+log() {
+    echo "$(date): $*" >> "$LOGFILE"
+}
 
 notify_failure() {
     local msg="$1"
-    echo "$(date): FAILURE: $msg" >> "$LOGFILE"
+    log "FAILURE: $msg"
     "$NOTIFY" --severity CRITICAL --key "backup-restic-fail" \
         --subject "Restic backup failed on $(hostname)" \
         --body "$msg
@@ -93,48 +39,137 @@ Check the log:
   tail -50 $LOGFILE"
 }
 
-log() {
-    echo "$(date): $*" >> "$LOGFILE"
+# Parse a backup.d config file. Sets: PATHS, EXCLUDES, KEEP_DAILY, etc.
+load_config() {
+    local conf="$1"
+    # Reset defaults
+    PATHS=""
+    EXCLUDES=""
+    KEEP_DAILY=14
+    KEEP_WEEKLY=8
+    KEEP_MONTHLY=24
+    OFFSITE=true
+
+    # Source the config (it's bash-compatible)
+    # shellcheck source=/dev/null
+    source "$conf"
+}
+
+# Build --exclude flags from the EXCLUDES variable
+build_excludes() {
+    local flags=()
+    while IFS= read -r line; do
+        line="${line#"${line%%[![:space:]]*}"}"  # trim leading whitespace
+        line="${line%"${line##*[![:space:]]}"}"  # trim trailing whitespace
+        [[ -z "$line" || "$line" == \#* ]] && continue
+        flags+=(--exclude "$line")
+    done <<< "$EXCLUDES"
+    echo "${flags[@]}"
+}
+
+# Build --keep-* flags from retention config
+build_forget_args() {
+    local args=(
+        --keep-daily "${KEEP_DAILY}"
+        --keep-weekly "${KEEP_WEEKLY}"
+        --keep-monthly "${KEEP_MONTHLY}"
+    )
+    [[ -n "${KEEP_LAST:-}" ]] && args+=(--keep-last "$KEEP_LAST")
+    echo "${args[@]}"
+}
+
+# Run restic backup for one source against one repo
+do_backup() {
+    local repo="$1"
+    local tag="$2"
+    shift 2
+    local -a paths=()
+    local -a exclude_flags=()
+
+    # Parse PATHS (space-separated, but respect quotes)
+    eval "paths=($PATHS)"
+
+    # Build exclude flags (noglob prevents pattern expansion)
+    set -f
+    while IFS= read -r line; do
+        line="${line#"${line%%[![:space:]]*}"}"
+        line="${line%"${line##*[![:space:]]}"}"
+        [[ -z "$line" || "$line" == \#* ]] && continue
+        exclude_flags+=(--exclude "$line")
+    done <<< "$EXCLUDES"
+    set +f
+
+    restic -r "$repo" backup \
+        "${paths[@]}" \
+        "${exclude_flags[@]}" \
+        --tag "$tag" \
+        --no-scan \
+        --cleanup-cache \
+        >> "$LOGFILE" 2>&1
+}
+
+# Apply retention for a tag against one repo
+do_forget() {
+    local repo="$1"
+    local tag="$2"
+
+    restic -r "$repo" forget \
+        --tag "$tag" \
+        --keep-daily "${KEEP_DAILY}" \
+        --keep-weekly "${KEEP_WEEKLY}" \
+        --keep-monthly "${KEEP_MONTHLY}" \
+        --prune \
+        >> "$LOGFILE" 2>&1
 }
 
 # --- Main ---
 
-log "Starting restic backup"
+log "=== Starting restic backup ==="
 
-# Local backup
-log "Backing up to local repo: $LOCAL_REPO"
-if ! restic -r "$LOCAL_REPO" backup \
-    "${SOURCES[@]}" \
-    "${EXCLUDES[@]}" \
-    --one-file-system=false \
-    --no-scan \
-    --cleanup-cache \
-    >> "$LOGFILE" 2>&1; then
-    notify_failure "Local restic backup failed"
-    exit 1
+FAILED=0
+
+for conf in "$CONFIG_DIR"/*.conf; do
+    [[ -f "$conf" ]] || continue
+    tag="$(basename "$conf" .conf)"
+    load_config "$conf"
+
+    if [[ -z "$PATHS" ]]; then
+        log "Skipping $tag: no PATHS defined"
+        continue
+    fi
+
+    # Local backup
+    log "[$tag] Backing up to local repo"
+    if do_backup "$LOCAL_REPO" "$tag"; then
+        log "[$tag] Local backup complete"
+        do_forget "$LOCAL_REPO" "$tag" || log "[$tag] Local forget/prune failed (non-fatal)"
+    else
+        log "[$tag] Local backup FAILED"
+        notify_failure "Local backup failed for source: $tag"
+        FAILED=1
+        continue  # Skip offsite if local failed
+    fi
+
+    # Offsite backup (if enabled)
+    if [[ "$OFFSITE" == "true" ]]; then
+        log "[$tag] Backing up to B2"
+        if do_backup "$REMOTE_REPO" "$tag"; then
+            log "[$tag] B2 backup complete"
+            do_forget "$REMOTE_REPO" "$tag" || log "[$tag] B2 forget/prune failed (non-fatal)"
+        else
+            log "[$tag] B2 backup FAILED"
+            notify_failure "B2 backup failed for source: $tag"
+            FAILED=1
+        fi
+    fi
+done
+
+if [[ "$FAILED" -eq 0 ]]; then
+    log "=== All backups completed successfully ==="
+else
+    log "=== Some backups failed — check above ==="
 fi
 
-log "Local backup complete, applying retention"
-restic -r "$LOCAL_REPO" forget "${FORGET_ARGS[@]}" --prune >> "$LOGFILE" 2>&1 || true
-
-# Remote backup (B2)
-log "Backing up to remote repo: $REMOTE_REPO"
-if ! restic -r "$REMOTE_REPO" backup \
-    "${SOURCES[@]}" \
-    "${EXCLUDES[@]}" \
-    --one-file-system=false \
-    --no-scan \
-    --cleanup-cache \
-    >> "$LOGFILE" 2>&1; then
-    notify_failure "Remote (B2) restic backup failed"
-    # Don't exit — local backup succeeded, just warn
-fi
-
-log "Remote backup complete, applying retention"
-restic -r "$REMOTE_REPO" forget "${FORGET_ARGS[@]}" --prune >> "$LOGFILE" 2>&1 || true
-
-log "Restic backup completed successfully"
-
-# Touch freshness stamp
+# Touch freshness stamp (even if some failed — the script itself ran)
 install -d -m 1777 "$(dirname "$MONITOR_STAMP")"
 touch "$MONITOR_STAMP"
