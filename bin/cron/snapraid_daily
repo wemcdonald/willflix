@@ -26,13 +26,13 @@ Check the log:
 
 echo "$(date): Starting snapraid daily" >> "$LOGFILE"
 
-# check_for_deletes (has its own 1hr timeout)
-if ! /home/will/bin/cron/check_for_deletes >> "$LOGFILE" 2>&1; then
-    notify_failure "check_for_deletes failed or timed out"
+# check_media_changes: intelligent snapraid diff analysis (replaces check_for_deletes)
+if ! /willflix/bin/cron/check_media_changes >> "$LOGFILE" 2>&1; then
+    notify_failure "check_media_changes flagged suspicious deletions or failed"
     exit 1
 fi
 
-echo "$(date): check_for_deletes passed, starting sync" >> "$LOGFILE"
+echo "$(date): check_media_changes passed, starting sync" >> "$LOGFILE"
 
 # sync with timeout
 if ! timeout "$SYNC_TIMEOUT" /usr/local/bin/snapraid --force-zero sync >> "$LOGFILE" 2>&1; then

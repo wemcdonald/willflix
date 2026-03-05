@@ -1,0 +1,311 @@
+#!/usr/bin/env python3
+"""check_media_changes — intelligent snapraid diff analysis.
+
+Replaces check_for_deletes. Parses snapraid diff output, groups changes
+by directory (show/movie), and uses an LLM to classify whether changes
+are routine upgrades or actual data loss.
+
+Exit codes:
+  0 — safe to proceed with sync
+  1 — significant unexplained deletions, abort sync
+"""
+
+import json
+import logging
+import os
+import subprocess
+import sys
+from collections import defaultdict
+from pathlib import Path
+
+# Add repo root to path for lib imports
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+
+from lib import config, llm, notify
+
+logging.basicConfig(level=logging.INFO, format="%(message)s")
+log = logging.getLogger(__name__)
+
+DIFF_TIMEOUT = 3600  # 1 hour
+IGNORE_PREFIXES = ("Backups/", "Plex/")
+# Minimum changes in a directory to warrant analysis
+MIN_CHANGES_FOR_ANALYSIS = 2
+# Maximum directories to send to LLM in one batch
+LLM_BATCH_SIZE = 10
+# Net delete threshold for immediate abort (without LLM)
+EMERGENCY_DELETE_THRESHOLD = 200
+
+
+def run_diff() -> str:
+    """Run snapraid diff and return output."""
+    result = subprocess.run(
+        ["snapraid", "diff"],
+        capture_output=True, text=True, timeout=DIFF_TIMEOUT,
+    )
+    # snapraid diff returns non-zero if there are changes, which is normal
+    return result.stdout + result.stderr
+
+
+def parse_diff(output: str) -> dict:
+    """Parse snapraid diff output into changes grouped by parent directory.
+
+    Returns: {
+        "/TV/Show Name": {"added": [...], "removed": [...], "updated": [...], "moved": [...]},
+        ...
+    }
+    """
+    changes = defaultdict(lambda: defaultdict(list))
+
+    for line in output.splitlines():
+        line = line.strip()
+        # Lines look like: "removed d1/TV/Show Name/Season 1/episode.mkv"
+        # or: "added d2/Movies/Movie Name (2020)/movie.mkv"
+        for action in ("added", "removed", "updated", "moved", "copied"):
+            if line.startswith(f"{action} "):
+                filepath = line[len(action) + 1:]
+                # Strip the disk prefix (d1/, d2/, etc.)
+                if "/" in filepath:
+                    _, _, filepath = filepath.partition("/")
+
+                # Skip ignored paths
+                if any(filepath.startswith(p) for p in IGNORE_PREFIXES):
+                    break
+
+                # Group by top two path components (e.g., "TV/Show Name" or "Movies/Movie Name")
+                parts = Path(filepath).parts
+                if len(parts) >= 2:
+                    group = str(Path(parts[0]) / parts[1])
+                else:
+                    group = parts[0] if parts else "unknown"
+
+                changes[group][action].append(filepath)
+                break
+
+    return dict(changes)
+
+
+def summarize_changes(changes: dict) -> list:
+    """Build summaries for directories with meaningful changes.
+
+    Returns list of dicts: [{"group": "TV/Show Name", "added": [...], "removed": [...], ...}]
+    """
+    summaries = []
+    for group, actions in sorted(changes.items()):
+        total = sum(len(files) for files in actions.values())
+        if total < MIN_CHANGES_FOR_ANALYSIS:
+            continue
+
+        summaries.append({
+            "group": group,
+            "added": actions.get("added", []),
+            "removed": actions.get("removed", []),
+            "updated": actions.get("updated", []),
+            "moved": actions.get("moved", []),
+        })
+
+    return summaries
+
+
+def classify_with_llm(summaries: list) -> list:
+    """Ask the LLM to classify each group of changes.
+
+    Returns summaries with 'classification' and 'llm_summary' fields added.
+    """
+    system_prompt = (
+        "You analyze file changes on a media server. For each directory, classify "
+        "the changes as one of:\n"
+        "- routine_upgrade: same content replaced with better quality or smaller format\n"
+        "- reorganization: files moved, renamed, or restructured but content preserved\n"
+        "- partial_loss: some content lost, some replaced or added\n"
+        "- significant_loss: content deleted with no equivalent replacement\n"
+        "- addition_only: new content added, nothing removed\n\n"
+        "Reply with a JSON array of objects, one per directory, each with:\n"
+        '  {"group": "...", "classification": "...", "summary": "one-line human-readable summary"}\n\n'
+        "Be concise. Focus on whether the deletions have equivalent replacements."
+    )
+
+    # Build the prompt with file lists (truncate long lists)
+    prompt_parts = []
+    for s in summaries:
+        part = f"Directory: {s['group']}\n"
+        for action in ("removed", "added", "updated", "moved"):
+            files = s.get(action, [])
+            if files:
+                # Show just filenames, not full paths, truncate at 15
+                names = [Path(f).name for f in files[:15]]
+                part += f"  {action}: {', '.join(names)}"
+                if len(files) > 15:
+                    part += f" (and {len(files) - 15} more)"
+                part += "\n"
+        prompt_parts.append(part)
+
+    prompt = "Classify these media file changes:\n\n" + "\n".join(prompt_parts)
+
+    response = llm.ask(prompt, system=system_prompt)
+    if response is None:
+        return summaries  # LLM failed, return unclassified
+
+    # Parse JSON from response (handle markdown code blocks)
+    try:
+        text = response.strip()
+        if text.startswith("```"):
+            text = text.split("\n", 1)[1].rsplit("```", 1)[0]
+        classifications = json.loads(text)
+
+        # Map classifications back to summaries
+        class_map = {c["group"]: c for c in classifications}
+        for s in summaries:
+            if s["group"] in class_map:
+                s["classification"] = class_map[s["group"]]["classification"]
+                s["llm_summary"] = class_map[s["group"]]["summary"]
+    except (json.JSONDecodeError, KeyError, TypeError) as e:
+        log.warning(f"Failed to parse LLM response: {e}")
+        # Attach raw response for debugging
+        for s in summaries:
+            s["llm_raw"] = response
+
+    return summaries
+
+
+def classify_without_llm(summaries: list) -> list:
+    """Fallback classification using simple heuristics."""
+    for s in summaries:
+        removed = len(s.get("removed", []))
+        added = len(s.get("added", []))
+
+        if removed == 0:
+            s["classification"] = "addition_only"
+            s["llm_summary"] = f"{added} files added"
+        elif added == 0:
+            s["classification"] = "significant_loss"
+            s["llm_summary"] = f"{removed} files deleted, nothing added"
+        else:
+            # Can't tell without LLM — flag as suspicious
+            s["classification"] = "partial_loss"
+            s["llm_summary"] = f"{removed} deleted, {added} added — could not determine if equivalent (LLM unavailable)"
+
+    return summaries
+
+
+def build_alert(summaries: list) -> tuple:
+    """Build alert subject and body from classified summaries.
+
+    Returns (subject, body, should_abort).
+    """
+    losses = [s for s in summaries if s.get("classification") in ("significant_loss", "partial_loss")]
+    upgrades = [s for s in summaries if s.get("classification") in ("routine_upgrade", "reorganization", "addition_only")]
+
+    if not losses:
+        return None, None, False
+
+    total_lost = sum(len(s.get("removed", [])) for s in losses)
+    subject = f"SnapRAID: {total_lost} suspicious file deletions on {os.uname().nodename}"
+
+    body_parts = ["The following media changes look suspicious:\n"]
+    for s in losses:
+        removed = len(s.get("removed", []))
+        added = len(s.get("added", []))
+        summary = s.get("llm_summary", f"{removed} removed, {added} added")
+        body_parts.append(f"  {s['group']}: {summary}")
+
+        # Show some filenames for context
+        for f in s.get("removed", [])[:5]:
+            body_parts.append(f"    - removed: {Path(f).name}")
+        for f in s.get("added", [])[:5]:
+            body_parts.append(f"    + added: {Path(f).name}")
+        body_parts.append("")
+
+    if upgrades:
+        body_parts.append(f"({len(upgrades)} directories with routine changes not shown)\n")
+
+    body_parts.append("Sync has been blocked to protect parity.\n")
+    body_parts.append("To investigate:")
+    body_parts.append("  snapraid diff | grep '^removed'")
+    body_parts.append("  snapraid diff | grep '^added'")
+
+    should_abort = any(s.get("classification") == "significant_loss" for s in losses)
+    return subject, "\n".join(body_parts), should_abort
+
+
+def main():
+    log.info("Running snapraid diff...")
+    try:
+        diff_output = run_diff()
+    except subprocess.TimeoutExpired:
+        log.error(f"snapraid diff timed out after {DIFF_TIMEOUT}s")
+        print(f"snapraid diff timed out after {DIFF_TIMEOUT}s — possible drive I/O issue", file=sys.stderr)
+        sys.exit(1)
+    except subprocess.SubprocessError as e:
+        log.error(f"snapraid diff failed: {e}")
+        print(f"snapraid diff failed: {e}", file=sys.stderr)
+        sys.exit(1)
+
+    changes = parse_diff(diff_output)
+    if not changes:
+        log.info("No meaningful changes detected")
+        sys.exit(0)
+
+    summaries = summarize_changes(changes)
+    if not summaries:
+        log.info("No directories with significant changes")
+        sys.exit(0)
+
+    total_removed = sum(len(s.get("removed", [])) for s in summaries)
+    total_added = sum(len(s.get("added", [])) for s in summaries)
+    log.info(f"Found changes in {len(summaries)} directories ({total_removed} removed, {total_added} added)")
+
+    # Emergency abort for massive deletes — don't even bother with LLM
+    if total_removed > EMERGENCY_DELETE_THRESHOLD:
+        notify.send(
+            "CRITICAL", "snapraid-mass-delete",
+            f"SnapRAID: {total_removed} files deleted on {os.uname().nodename}",
+            f"Massive deletion detected ({total_removed} files). Sync blocked.\n\n"
+            f"Top affected directories:\n"
+            + "\n".join(f"  {s['group']}: {len(s.get('removed', []))} removed"
+                        for s in sorted(summaries, key=lambda x: len(x.get("removed", [])), reverse=True)[:10])
+            + "\n\nInvestigate immediately:\n  snapraid diff | grep '^removed' | head -50",
+        )
+        sys.exit(1)
+
+    # Classify changes
+    log.info("Classifying changes with LLM...")
+    summaries_to_classify = [s for s in summaries if s.get("removed")]
+    if summaries_to_classify:
+        # Process in batches
+        for i in range(0, len(summaries_to_classify), LLM_BATCH_SIZE):
+            batch = summaries_to_classify[i:i + LLM_BATCH_SIZE]
+            classified = classify_with_llm(batch)
+            # If LLM didn't add classifications, fall back to heuristics
+            if not any("classification" in s for s in classified):
+                log.warning("LLM classification failed, using heuristics")
+                classify_without_llm(classified)
+
+    # Mark addition-only directories
+    for s in summaries:
+        if "classification" not in s:
+            if not s.get("removed"):
+                s["classification"] = "addition_only"
+                s["llm_summary"] = f"{len(s.get('added', []))} files added"
+
+    # Log all classifications
+    for s in summaries:
+        classification = s.get("classification", "unclassified")
+        summary = s.get("llm_summary", "")
+        log.info(f"  {s['group']}: {classification} — {summary}")
+
+    # Alert and decide
+    subject, body, should_abort = build_alert(summaries)
+    if subject:
+        severity = "CRITICAL" if should_abort else "WARNING"
+        notify.send(severity, "snapraid-media-changes", subject, body)
+
+    if should_abort:
+        log.info("Aborting sync due to significant unexplained deletions")
+        sys.exit(1)
+
+    log.info("Changes classified as safe, proceeding with sync")
+    sys.exit(0)
+
+
+if __name__ == "__main__":
+    main()

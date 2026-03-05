@@ -43,6 +43,7 @@ MONITORS=(
     "willflix-check-docker 45"
     "willflix-check-systemd 45"
     "willflix-check-backups 2880"
+    "check_media_apps 720"
 )
 
 STALE=""

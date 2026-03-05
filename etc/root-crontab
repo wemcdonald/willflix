@@ -21,6 +21,9 @@ MAILTO=will
 # Backup freshness (daily after heartbeat)
 15 9 * * * /willflix/bin/cron/willflix-check-backups
 
+# Media app health checks (every 6 hours)
+0 */6 * * * /willflix/bin/cron/check_media_apps
+
 # Backups
 0 0 * * * /usr/local/bin/cronic /willflix/bin/cron/backup_plex
 30 2 * * * /willflix/bin/cron/backup_postgres
