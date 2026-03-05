@@ -9,5 +9,5 @@ fi
 # h
 
 # Touch freshness stamp
-mkdir -p /var/tmp/willflix-monitors
+install -d -m 1777 /var/tmp/willflix-monitors
 touch /var/tmp/willflix-monitors/backup_plex

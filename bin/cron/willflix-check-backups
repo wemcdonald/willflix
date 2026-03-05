@@ -44,5 +44,5 @@ if [[ -n "$STALE" ]]; then
 fi
 
 # Touch freshness stamp
-mkdir -p "$(dirname "$MONITOR_STAMP")"
+install -d -m 1777 "$(dirname "$MONITOR_STAMP")"
 touch "$MONITOR_STAMP"

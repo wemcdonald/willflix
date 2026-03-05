@@ -44,5 +44,5 @@ if [ -n "$ERRORS" ]; then
 fi
 
 # Touch freshness stamp on successful check (even if errors found — the check itself ran)
-mkdir -p "$(dirname "$MONITOR_STAMP")"
+install -d -m 1777 "$(dirname "$MONITOR_STAMP")"
 touch "$MONITOR_STAMP"

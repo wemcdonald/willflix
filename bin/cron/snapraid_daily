@@ -48,5 +48,5 @@ fi
 echo "$(date): snapraid daily completed successfully" >> "$LOGFILE"
 
 # Touch freshness stamp on success
-mkdir -p "$(dirname "$MONITOR_STAMP")"
+install -d -m 1777 "$(dirname "$MONITOR_STAMP")"
 touch "$MONITOR_STAMP"
