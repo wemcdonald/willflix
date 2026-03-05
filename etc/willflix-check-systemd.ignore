@@ -1,9 +1,11 @@
 # Systemd units to ignore in health checks.
 # One unit name per line. Comments start with #.
 # These are known-legacy or expected failures.
+# certbot: installed but static (not enabled), Traefik handles certs
 certbot.service
-courier-imap-ssl.service
+# mount-all: fails at boot when drives are missing (expected during recovery)
 mount-all.service
+# nginx: installed but disabled, replaced by Traefik
 nginx.service
-vncserver@1.service
+# MediaJ: dead drive, recovery in progress
 Volumes-MediaJ.mount

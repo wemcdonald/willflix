@@ -23,3 +23,4 @@ MAILTO=will
 
 # Backups
 0 0 * * * /usr/local/bin/cronic /home/will/bin/cron/backup_plex
+30 2 * * * /home/will/bin/cron/backup_postgres
