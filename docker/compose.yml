@@ -53,7 +53,7 @@ services:
     volumes:
       - /home/will/.config/rclone:/root/.config/rclone
       - /Volumes/Bonus1/lafayette:/Volumes/Bonus1/lafayette
-      - /home/will/server-config:/home/will/server-config
+      - /willflix:/willflix:ro
     secrets:
       - restic_password
     environment:
@@ -61,7 +61,7 @@ services:
       BACKUP_CRON: "0 30 3 * * *"
       RESTIC_REPOSITORY: /Volumes/Bonus1/lafayette
       RESTIC_PASSWORD_FILE: /run/secrets/restic_password
-      RESTIC_BACKUP_SOURCES: /home/will/server-config
+      RESTIC_BACKUP_SOURCES: /willflix
       RESTIC_COMPRESSION: max
       RESTIC_PACK_SIZE: 64
       RESTIC_BACKUP_ARGS: >-
