@@ -66,8 +66,12 @@ services:
       RESTIC_PACK_SIZE: 64
       RESTIC_BACKUP_ARGS: >-
         --exclude /willflix/.git
-        --exclude /srv/mysql/data
-        --exclude *.gz
+        --exclude '**/node_modules'
+        --exclude '**/.next'
+        --exclude '**/__pycache__'
+        --exclude '**/.cache'
+        --exclude '**/Cache'
+        --exclude '*.gz'
         --no-scan
         --cleanup-cache
       RESTIC_FORGET_ARGS: >-
