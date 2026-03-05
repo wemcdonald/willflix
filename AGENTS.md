@@ -28,8 +28,8 @@ Ops repo for a personal headless media server (hostname: lafayette). Contains mo
 - Use `willflix-notify` for all alerts — never call sendmail directly
 - Usage: `willflix-notify --severity CRITICAL --key "unique-key" --subject "..." --body "..."`
 - Severity levels: INFO (email only), WARNING (email + push), CRITICAL (email + emergency push), META (cross-channel failover)
-- Config: `~/.config/willflix-notify/config` (Pushover creds, email, dedup settings)
-- Dedup: same `--key` suppressed for 6 hours by default
+- Config: `etc/willflix-notify.config` (defaults), `~/.config/willflix-notify/config` (optional overrides for credentials)
+- Dedup: same `--key` suppressed until next 8am reset (configurable via DEDUP_RESET_HOUR)
 - Always include diagnostic commands in the `--body` so the user knows what to run
 - Test delivery: `willflix-notify --test --subject "Test"`
 

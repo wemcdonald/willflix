@@ -55,35 +55,56 @@ if [[ "$TEST_MODE" == "false" && ( -z "$SEVERITY" || -z "$KEY" ) ]]; then
     exit 1
 fi
 
-# Load config (for dedup settings)
-CONFIG_FILE="${HOME}/.config/willflix-notify/config"
-if [[ ! -f "$CONFIG_FILE" ]]; then
-    # First-run: create config from example
-    EXAMPLE="$(cd "$(dirname "$0")/../etc" && pwd)/willflix-notify.config.example"
-    mkdir -p "$(dirname "$CONFIG_FILE")"
-    if [[ -f "$EXAMPLE" ]]; then
-        cp "$EXAMPLE" "$CONFIG_FILE"
-        echo "Created config at $CONFIG_FILE — please fill in Pushover credentials and re-run." >&2
-    else
-        echo "No config found at $CONFIG_FILE and no example to copy." >&2
-    fi
+# Load config: repo default, then optional home-dir override
+REPO_CONFIG="$(cd "$(dirname "$0")/../etc" && pwd)/willflix-notify.config"
+HOME_CONFIG="${HOME}/.config/willflix-notify/config"
+
+if [[ ! -f "$REPO_CONFIG" ]]; then
+    echo "Missing repo config: $REPO_CONFIG" >&2
     exit 1
 fi
+
 # shellcheck source=/dev/null
-source "$CONFIG_FILE"
+source "$REPO_CONFIG"
+
+# Home-dir config can override any values (e.g. credentials)
+if [[ -f "$HOME_CONFIG" ]]; then
+    # shellcheck source=/dev/null
+    source "$HOME_CONFIG"
+fi
 
 DEDUP_DIR="${DEDUP_DIR:-/var/tmp/willflix-notify}"
-DEDUP_WINDOW="${DEDUP_WINDOW:-21600}"
+DEDUP_RESET_HOUR="${DEDUP_RESET_HOUR:-8}"  # Suppress repeats until this hour (0-23)
+DEDUP_MAX_WINDOW="${DEDUP_MAX_WINDOW:-86400}"  # Safety cap: 24 hours
 
 # --- Dedup check ---
+
+# Returns the epoch timestamp of the most recent occurrence of DEDUP_RESET_HOUR.
+# If it's currently past that hour today, returns today's reset time.
+# If it's before that hour, returns yesterday's reset time.
+last_reset_epoch() {
+    local now today_reset
+    now=$(date +%s)
+    today_reset=$(date -d "today ${DEDUP_RESET_HOUR}:00:00" +%s)
+    if [[ "$now" -ge "$today_reset" ]]; then
+        echo "$today_reset"
+    else
+        echo $(( today_reset - 86400 ))
+    fi
+}
 
 is_deduped() {
     [[ "$TEST_MODE" == "true" ]] && return 1  # --test bypasses dedup
 
     local keyfile="${DEDUP_DIR}/${KEY}"
     if [[ -f "$keyfile" ]]; then
-        local age=$(( $(date +%s) - $(stat -c %Y "$keyfile") ))
-        if [[ "$age" -lt "$DEDUP_WINDOW" ]]; then
+        local sent_at age reset_boundary
+        sent_at=$(stat -c %Y "$keyfile")
+        age=$(( $(date +%s) - sent_at ))
+        reset_boundary=$(last_reset_epoch)
+
+        # Suppress if: sent after the last reset boundary AND within safety cap
+        if [[ "$sent_at" -ge "$reset_boundary" && "$age" -lt "$DEDUP_MAX_WINDOW" ]]; then
             return 0  # suppress
         fi
     fi

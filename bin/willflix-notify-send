@@ -29,14 +29,18 @@ if [[ -z "$CHANNEL" || -z "$SUBJECT" ]]; then
     exit 1
 fi
 
-# Load config
-CONFIG_FILE="${HOME}/.config/willflix-notify/config"
-if [[ ! -f "$CONFIG_FILE" ]]; then
-    echo "Config not found: $CONFIG_FILE" >&2
+# Load config: repo default, then optional home-dir override
+REPO_CONFIG="$(cd "$(dirname "$0")/../etc" && pwd)/willflix-notify.config"
+HOME_CONFIG="${HOME}/.config/willflix-notify/config"
+
+if [[ ! -f "$REPO_CONFIG" ]]; then
+    echo "Missing repo config: $REPO_CONFIG" >&2
     exit 1
 fi
+
 # shellcheck source=/dev/null
-source "$CONFIG_FILE"
+source "$REPO_CONFIG"
+[[ -f "$HOME_CONFIG" ]] && source "$HOME_CONFIG"
 
 send_email() {
     local to="${NOTIFY_EMAIL:?NOTIFY_EMAIL not set in config}"

@@ -16,10 +16,12 @@ NOTIFY="$(cd "$SCRIPT_DIR/.." && pwd)/willflix-notify"
 
 MODE="${1:---silent}"
 
-# Load config
-CONFIG_FILE="${HOME}/.config/willflix-notify/config"
+# Load config: repo default, then optional home-dir override
+REPO_CONFIG="$(cd "$SCRIPT_DIR/../../etc" && pwd)/willflix-notify.config"
+HOME_CONFIG="${HOME}/.config/willflix-notify/config"
 # shellcheck source=/dev/null
-source "$CONFIG_FILE"
+source "$REPO_CONFIG"
+[[ -f "$HOME_CONFIG" ]] && source "$HOME_CONFIG"
 
 MONITOR_FRESHNESS_DIR="${MONITOR_FRESHNESS_DIR:-/var/tmp/willflix-monitors}"
 
