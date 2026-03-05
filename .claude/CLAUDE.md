@@ -8,7 +8,7 @@ This is the ops repo for a personal headless Ubuntu server (hostname: `lafayette
 - **Hostname**: lafayette
 - **Storage**: 11 data drives (MediaA–K) + 3 parity drives in a mergerfs + snapraid array, ~98TB usable
 - **Services**: ~40 Docker containers behind Traefik reverse proxy with Authentik SSO
-- **Docker config**: Lives in `/docker/` (separate git repo with git-crypt secrets)
+- **Docker config**: Lives in `/willflix/docker/` (git-crypt encrypted secrets in `/willflix/secrets/`)
 
 ## Storage Architecture
 
@@ -36,14 +36,14 @@ This is the ops repo for a personal headless Ubuntu server (hostname: `lafayette
 
 | Path | Purpose |
 |------|---------|
-| `/docker/` | Docker compose, Traefik, secrets (separate git repo) |
-| `/docker/config/docker-compose.yml` | Main compose file |
-| `/docker/config/secrets/` | git-crypt encrypted secrets |
-| `~/willflix/` | This repo — ops scripts, docs, monitoring |
-| `~/willflix/bin/cron/` | Cron scripts (symlinked from `~/bin/cron`) |
-| `~/willflix/docs/` | System documentation, postmortems, PRDs |
-| `/etc/smartd.conf` | SMART monitoring config (maintained here, applied to system) |
-| `/etc/snapraid.conf` | SnapRAID array config |
+| `/willflix/` | This repo — everything below |
+| `/willflix/docker/compose.yml` | Main Docker compose file |
+| `/willflix/docker/appdata/` | Container volumes (gitignored) |
+| `/willflix/secrets/` | git-crypt encrypted secrets |
+| `/willflix/bin/` | Admin scripts, cron scripts (`bin/cron/`) |
+| `/willflix/etc/` | System configs (smartd, systemd units, crontab) |
+| `/willflix/docs/` | Documentation, postmortems, plans |
+| `/docker` | Compat symlink → `/willflix/docker` |
 | `/Volumes/Media*/` | Individual data/parity drive mounts |
 | `/Volumes/Media` | MergerFS merged view |
 | `/snapraid/` | SnapRAID content file (on root drive) |
@@ -51,7 +51,7 @@ This is the ops repo for a personal headless Ubuntu server (hostname: `lafayette
 ## Mail / Alerting
 
 - **Pipeline**: `/usr/sbin/sendmail` → `sendmail-system` script → curl SMTP → `smtp-relay` container → Gmail
-- **sendmail-system**: `/docker/bin/sendmail-system` — maps local users to `wemcdonald@gmail.com`
+- **sendmail-system**: `/willflix/bin/sendmail-system` — maps local users to `wemcdonald@gmail.com`
 - **Root crontab**: `MAILTO=will` (sendmail delivers cron errors to Gmail)
 - **Known issue**: `/usr/bin/mail` command doesn't work; always use `sendmail` or `sendmail -t`
 
@@ -61,7 +61,7 @@ This is the ops repo for a personal headless Ubuntu server (hostname: `lafayette
 ```bash
 # NEVER use bare `docker compose up -d` or `docker compose down`
 # ALWAYS specify service names
-cd /docker/config && docker compose up -d <service-name>
+cd /willflix/docker && docker compose up -d <service-name>
 docker compose logs -f <container-name>
 ```
 
