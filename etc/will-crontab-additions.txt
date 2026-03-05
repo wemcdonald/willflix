@@ -1,0 +1,13 @@
+# Will's crontab backup jobs — add stamp touches for freshness monitoring.
+# Apply with: crontab -e
+#
+# BEFORE:
+#   0 0 * * * /usr/local/bin/cronic /home/will/bin/cron/backup_calibre
+# AFTER:
+#   0 0 * * * /usr/local/bin/cronic /home/will/bin/cron/backup_calibre && touch /var/tmp/willflix-monitors/backup_calibre
+
+0 0 * * * /usr/local/bin/cronic /home/will/bin/cron/backup_calibre && touch /var/tmp/willflix-monitors/backup_calibre
+0 0 * * * /usr/local/bin/cronic /home/will/bin/cron/backup_google_photos && touch /var/tmp/willflix-monitors/backup_google_photos
+30 0 * * * /usr/local/bin/cronic /home/will/bin/cron/backup_gmail && touch /var/tmp/willflix-monitors/backup_gmail
+45 0 * * * /usr/local/bin/cronic /home/will/bin/cron/backup_home && touch /var/tmp/willflix-monitors/backup_home
+0 1 * * * /usr/local/bin/cronic /home/will/Dropbox/system/bin/plex_db_backup.sh && touch /var/tmp/willflix-monitors/plex_db_backup
