@@ -1,7 +1,7 @@
 # Offsite & Expanded Local Backup — Design
 
 **Date**: 2026-03-05
-**Status**: Approved
+**Status**: Complete
 **Depends on**: Phase 2b (backup_postgres), repo consolidation
 
 ---
