@@ -121,10 +121,10 @@ sudo systemctl daemon-reload
 
 **Just postgres restore:**
 ```bash
-latest=$(ls /Volumes/Bonus1/postgres-backup/globals-*.sql.gz | sort | tail -1 | grep -oP '\d{4}-\d{2}-\d{2}')
-gunzip -c /Volumes/Bonus1/postgres-backup/globals-${latest}.sql.gz | docker exec -i config-postgres-1 psql -U will postgres
-for dump in /Volumes/Bonus1/postgres-backup/*-${latest}.sql.gz; do
-    db=$(basename "$dump" | sed "s/-${latest}.sql.gz//")
+dir=/Volumes/Bonus1/postgres-backup/latest
+gunzip -c "$dir/globals.sql.gz" | docker exec -i config-postgres-1 psql -U will postgres
+for dump in "$dir"/*.sql.gz; do
+    db=$(basename "$dump" .sql.gz)
     [[ "$db" == "globals" ]] && continue
     docker exec config-postgres-1 createdb -U will "$db" 2>/dev/null || true
     gunzip -c "$dump" | docker exec -i config-postgres-1 psql -U will "$db"

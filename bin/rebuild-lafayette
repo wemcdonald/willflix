@@ -318,6 +318,7 @@ stage_8_postgres() {
     stage 8 "Restore PostgreSQL"
 
     local dump_dir="/Volumes/Bonus1/postgres-backup"
+    local latest_dir="$dump_dir/latest"
 
     if [[ ! -d "$dump_dir" ]]; then
         warn "Dump directory not found: $dump_dir"
@@ -326,21 +327,18 @@ stage_8_postgres() {
         return 0
     fi
 
-    echo "Available dumps:"
-    ls -lh "$dump_dir"/*.sql.gz 2>/dev/null | tail -10
-    echo ""
-
-    # Find latest date
-    local latest_date
-    latest_date=$(ls "$dump_dir"/globals-*.sql.gz 2>/dev/null | sort | tail -1 | grep -oP '\d{4}-\d{2}-\d{2}')
-
-    if [[ -z "$latest_date" ]]; then
-        warn "No dumps found in $dump_dir"
+    if [[ ! -L "$latest_dir" && ! -d "$latest_dir" ]]; then
+        warn "No 'latest' symlink found in $dump_dir"
+        echo "Available date directories:"
+        ls -d "$dump_dir"/20* 2>/dev/null || echo "  (none)"
         return 0
     fi
 
-    echo "Will restore dumps from: $latest_date"
-    confirm || return 0
+    echo "Latest dumps ($(readlink "$latest_dir" 2>/dev/null || basename "$latest_dir")):"
+    ls -lh "$latest_dir"/*.sql.gz 2>/dev/null
+    echo ""
+
+    confirm "Restore these dumps?" || return 0
 
     # Wait for postgres to be ready
     echo "Waiting for postgres to be ready..."
@@ -356,20 +354,18 @@ stage_8_postgres() {
     info "Postgres is ready"
 
     # Restore globals first
-    local globals="$dump_dir/globals-${latest_date}.sql.gz"
-    if [[ -f "$globals" ]]; then
-        gunzip -c "$globals" | docker exec -i config-postgres-1 psql -U will postgres 2>&1 | tail -3
+    if [[ -f "$latest_dir/globals.sql.gz" ]]; then
+        gunzip -c "$latest_dir/globals.sql.gz" | docker exec -i config-postgres-1 psql -U will postgres 2>&1 | tail -3
         info "Globals restored"
     fi
 
     # Restore each database
-    for dump in "$dump_dir"/*-"${latest_date}".sql.gz; do
+    for dump in "$latest_dir"/*.sql.gz; do
         local dbname
-        dbname=$(basename "$dump" | sed "s/-${latest_date}.sql.gz//")
+        dbname=$(basename "$dump" .sql.gz)
         [[ "$dbname" == "globals" ]] && continue
 
         echo "Restoring $dbname..."
-        # Create database if it doesn't exist
         docker exec config-postgres-1 psql -U will -tc "SELECT 1 FROM pg_database WHERE datname='$dbname'" | grep -q 1 || \
             docker exec config-postgres-1 createdb -U will "$dbname" 2>/dev/null || true
         gunzip -c "$dump" | docker exec -i config-postgres-1 psql -U will "$dbname" 2>&1 | tail -3

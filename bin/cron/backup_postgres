@@ -2,6 +2,16 @@
 # backup_postgres — daily per-database pg_dump with auto-discovery.
 # Dumps each database individually for easy single-DB restore.
 # Also dumps global roles/permissions.
+#
+# Layout:
+#   /Volumes/Bonus1/postgres-backup/
+#   ├── 2026-03-05/
+#   │   ├── globals.sql.gz
+#   │   ├── authentik.sql.gz
+#   │   └── ...
+#   ├── latest → 2026-03-05
+#   └── (14 days of dated dirs)
+#
 # Run daily at 2:30am via cron.
 
 set -euo pipefail
@@ -15,6 +25,7 @@ DB_USER="will"
 BACKUP_DIR="/Volumes/Bonus1/postgres-backup"
 RETENTION_DAYS=14
 TODAY=$(date +%Y-%m-%d)
+TODAY_DIR="${BACKUP_DIR}/${TODAY}"
 
 # Ensure backup directory exists
 if ! mountpoint -q /Volumes/Bonus1 2>/dev/null; then
@@ -23,13 +34,13 @@ if ! mountpoint -q /Volumes/Bonus1 2>/dev/null; then
         --body "/Volumes/Bonus1 is not mounted. Cannot write backups."
     exit 1
 fi
-mkdir -p "$BACKUP_DIR"
+mkdir -p "$TODAY_DIR"
 
 FAILED=""
 
 # Dump global roles and permissions
 if docker exec "$CONTAINER" pg_dumpall -U "$DB_USER" --globals-only 2>/dev/null \
-    | gzip > "${BACKUP_DIR}/globals-${TODAY}.sql.gz"; then
+    | gzip > "${TODAY_DIR}/globals.sql.gz"; then
     :
 else
     FAILED="${FAILED}  globals: pg_dumpall --globals-only failed\n"
@@ -51,24 +62,29 @@ Check:
 # Dump each database
 for db in $DBS; do
     if docker exec "$CONTAINER" pg_dump -U "$DB_USER" "$db" 2>/dev/null \
-        | gzip > "${BACKUP_DIR}/${db}-${TODAY}.sql.gz"; then
+        | gzip > "${TODAY_DIR}/${db}.sql.gz"; then
         :
     else
         FAILED="${FAILED}  ${db}: pg_dump failed\n"
-        # Remove partial dump
-        rm -f "${BACKUP_DIR}/${db}-${TODAY}.sql.gz"
+        rm -f "${TODAY_DIR}/${db}.sql.gz"
     fi
 done
+
+# Update latest symlink
+ln -sfn "$TODAY" "${BACKUP_DIR}/latest"
 
 # Alert on any failures
 if [[ -n "$FAILED" ]]; then
     "$NOTIFY" --severity CRITICAL --key "backup-postgres-fail" \
         --subject "PostgreSQL backup had failures on $(hostname)" \
-        --body "$(echo -e "Some databases failed to dump:\n\n${FAILED}\nSuccessful dumps are in ${BACKUP_DIR}/\n\nCheck:\n  docker logs ${CONTAINER} --tail 20\n  ls -la ${BACKUP_DIR}/")"
+        --body "$(echo -e "Some databases failed to dump:\n\n${FAILED}\nSuccessful dumps are in ${TODAY_DIR}/\n\nCheck:\n  docker logs ${CONTAINER} --tail 20\n  ls -la ${TODAY_DIR}/")"
 fi
 
-# Clean up old dumps
-find "$BACKUP_DIR" -name "*.sql.gz" -mtime +"$RETENTION_DAYS" -delete
+# Clean up old date directories
+find "$BACKUP_DIR" -maxdepth 1 -type d -name '20*' -mtime +"$RETENTION_DAYS" -exec rm -rf {} +
+
+# Clean up old flat files from previous format (one-time migration)
+find "$BACKUP_DIR" -maxdepth 1 -name '*.sql.gz' -delete 2>/dev/null || true
 
 # Touch freshness stamp
 install -d -m 1777 /var/tmp/willflix-monitors
