@@ -118,6 +118,7 @@ class SonarrRadarrChecker:
             {"type": h.get("type", ""), "message": h.get("message", "")}
             for h in data
             if h.get("type") in ("warning", "error")
+            and h.get("source") != "UpdateCheck"  # handled by nightly update_containers
         ]
 
 
@@ -233,6 +234,24 @@ def build_report(issues: dict) -> tuple:
     return subject, body
 
 
+MAINTENANCE_LOG = Path("/willflix/log/maintenance.log")
+
+
+def _log_issues(issues: dict):
+    """Append a one-line summary per app to the maintenance log."""
+    date = datetime.now().strftime("%Y-%m-%d")
+    lines = []
+    for app, app_issues in issues.items():
+        if not app_issues:
+            continue
+        parts = [f"{cat} ({len(items)})" for cat, items in app_issues.items() if items]
+        lines.append(f"{date} check_media_apps  {app}: {', '.join(parts)}\n")
+    if lines:
+        MAINTENANCE_LOG.parent.mkdir(parents=True, exist_ok=True)
+        with MAINTENANCE_LOG.open("a") as f:
+            f.writelines(lines)
+
+
 def main():
     cfg = config.load_config()
 
@@ -340,6 +359,7 @@ def main():
 
         notify.send(severity, "media-app-health", subject, body)
         log.info(f"Alert sent: {subject}")
+        _log_issues(issues)
     else:
         log.info("All media apps healthy")
 

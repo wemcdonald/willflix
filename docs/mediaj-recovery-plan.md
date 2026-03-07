@@ -39,57 +39,72 @@
 mounted as MediaJ BEFORE snapraid fix, because snapraid writes to the path
 configured for d10 (`/Volumes/MediaJ/`), not to MediaSpare.
 
-- [ ] 4.1 Unmount dying MediaJ: `sudo umount /tmp/mediaj-recovery`
-- [ ] 4.2 Disable snapraid cron jobs temporarily (prevent sync during transition)
+- [x] 4.1 Unmount dying MediaJ: `sudo umount /tmp/mediaj-recovery`
+- [x] 4.2 Disable snapraid cron jobs temporarily (prevent sync during transition)
+- [x] 4.3 Unmount MediaSpare: `sudo umount /Volumes/MediaSpare`
+- [x] 4.4 Relabel MediaSpare → MediaJ: `sudo e2label /dev/sdm1 MediaJ`
+- [x] 4.5 Mount new MediaJ: `sudo mount /Volumes/MediaJ`
+- [~] 4.6 snapraid fix -d d10 — SKIPPED: aborted by MediaC read errors (missing
+      Plex cache files on bad sectors). Ran audit check instead — also too slow.
+      Decision: skip parity restore, re-download the 8 missing files instead.
+      Risk of silent corruption on rsync'd files is low for media library.
+- [x] 4.7 Old dying drive physically removed (`/dev/sdu`, WDC WD120EMAZ, serial 8CGR2NSE)
+- [x] 4.8 New 16.4TB drive installed, formatted, mounted at `/Volumes/MediaParity3.New` (`/dev/sdh1`)
+
+### Phase 4b: Replace MediaParity3 & MediaC (pre-sync)
+
+Replacing two drives before running sync so it all gets done in one pass.
+
+- **Old MediaParity3**: `/dev/sdc1`, WDC WD140EDGZ-11B1PA0, serial XHG930GH, 12.7TB
+- **New parity drive**: `/dev/sdh1`, 16.4TB, currently `LABEL=MediaParity3.New` at `/Volumes/MediaParity3.New`
+- **MediaC** (sdb): Seagate ST33000651AS, serial 9XK071TZ, 2.7TB, 67K hours, 6 pending sectors — highest failure risk
+
+**Plan**: Copy parity3 → new drive, then reformat old parity3 (12.7TB) as new MediaC,
+copy MediaC data → new MediaC, retire old MediaC.
+
+- [ ] 4b.1 Copy parity data to new drive — **LONG-RUNNING**
       ```
-      sudo crontab -e
-      # Comment out these 3 lines:
-      #   0 1 * * 0 /willflix/bin/cron/snapraid_weekly
-      #   0 1 * * 1-6 /willflix/bin/cron/snapraid_daily
-      #   30 8 * * * /willflix/bin/cron/check_snapraid_freshness
+      sudo rsync -a --progress /Volumes/MediaParity3/snapraid.parity /Volumes/MediaParity3.New/
       ```
-      **WHY**: snapraid_daily uses `--force-zero` and runs at 1am. If it runs
-      mid-transition it could corrupt parity. check_for_deletes would likely
-      block it, but disabling is safer.
-- [ ] 4.3 Unmount MediaSpare: `sudo umount /Volumes/MediaSpare`
-- [ ] 4.4 Relabel MediaSpare → MediaJ: `sudo e2label /dev/sdm1 MediaJ`
-- [ ] 4.5 Mount new MediaJ: `sudo mount /Volumes/MediaJ`
-- [ ] 4.6 Run `snapraid fix -d d10` to overwrite with parity-protected data — **LONG-RUNNING**
+- [ ] 4b.2 Unmount old MediaParity3: `sudo umount /Volumes/MediaParity3`
+- [ ] 4b.3 Relabel new drive: `sudo e2label /dev/sdh1 MediaParity3`
+- [ ] 4b.4 Mount new MediaParity3: `sudo umount /Volumes/MediaParity3.New && sudo mount /Volumes/MediaParity3`
+- [ ] 4b.5 Reformat old parity drive as MediaC replacement:
       ```
-      sudo snapraid fix -d d10 -l /tmp/snapraid-fix.log
+      sudo mkfs.ext4 -L MediaC.New /dev/sdc1
+      sudo mkdir -p /Volumes/MediaC.New && sudo mount /dev/sdc1 /Volumes/MediaC.New
       ```
-      This reconstructs ~1M files from May 2025 parity onto the new drive,
-      overwriting rsync'd copies with known-good parity-verified versions.
-      Post-May-2025 files (from rsync) are left untouched.
-- [ ] 4.7 Verify fix results
+- [ ] 4b.6 Copy MediaC data to new drive — **LONG-RUNNING**
       ```
-      grep -i "error\|unrecoverable" /tmp/snapraid-fix.log
+      sudo rsync -a --progress /Volumes/MediaC/ /Volumes/MediaC.New/
       ```
-- [ ] 4.8 Identify permanently lost files — the 8 rsync failures that are also
-      post-May-2025 (no parity). The 3 Downloads files definitely have no parity.
-      The 5 TV files (Fallout S02, F1 S08, Love Is Blind S10, Shrinking S03,
-      The Pitt S02) are likely post-May-2025 but worth checking the fix log.
-- [ ] 4.9 Run full snapraid sync — **LONG-RUNNING**
+- [ ] 4b.7 Unmount old MediaC: `sudo umount /Volumes/MediaC`
+- [ ] 4b.8 Relabel new MediaC: `sudo e2label /dev/sdc1 MediaC`
+- [ ] 4b.9 Mount new MediaC: `sudo umount /Volumes/MediaC.New && sudo mount /Volumes/MediaC`
+- [ ] 4b.10 Update snapraid.conf if parity path changed (check — should be same path)
+- [ ] 4b.11 Physically remove old MediaC (Seagate ST33000651AS, serial 9XK071TZ)
+
+### Phase 4c: Sync & Finalize
+
+- [ ] 4c.1 Run full snapraid sync — **LONG-RUNNING**
       ```
       sudo snapraid sync
       ```
-- [ ] 4.10 Run snapraid scrub to validate parity — **LONG-RUNNING**
+      This covers: new MediaJ (d10), new MediaC (d3), and new MediaParity3 in one pass.
+- [ ] 4c.2 Run snapraid scrub to validate parity — **LONG-RUNNING**
       ```
       sudo snapraid scrub
       ```
-- [ ] 4.11 Comment out MediaSpare line in fstab (label no longer exists)
+- [ ] 4c.3 Comment out MediaSpare line in fstab (label no longer exists)
       ```
       sudo sed -i 's/^LABEL=MediaSpare/#LABEL=MediaSpare/' /etc/fstab
       ```
-- [ ] 4.12 Remount mergerfs so pool picks up new MediaJ content (or reboot)
+- [ ] 4c.4 Remount mergerfs so pool picks up new drive content (or reboot)
       ```
-      # This briefly interrupts Plex/etc reading from /Volumes/Media
       sudo umount /Volumes/Media && sudo mount /Volumes/Media
       ```
-      Note: mergerfs already has /Volumes/MediaJ as a branch (glob matched at
-      boot), but remounting ensures a clean state with the real drive.
-- [ ] 4.13 Re-enable snapraid cron jobs (uncomment the 3 lines from step 4.2)
-- [ ] 4.14 Physically remove or disconnect old drive (WDC WD120EMAZ, serial 8CGR2NSE, /dev/sdu) — can wait until next maintenance window
+- [ ] 4c.5 Re-enable snapraid cron jobs
+- [ ] 4c.6 Update smartd.conf with new drive serial numbers
 
 ## Phase 5: Rebuild App State
 
@@ -108,16 +123,20 @@ configured for d10 (`/Volumes/MediaJ/`), not to MediaSpare.
 - [ ] 6.6 Consider snapraid-runner or similar wrapper with built-in safeguards
 - [ ] 6.7 Acquire a new spare drive to replace MediaSpare's role
 
-## Current State (updated 2026-03-04, evening)
+## Current State (updated 2026-03-05)
 
-**Rsync complete. Ready for Phase 4 (drive swap + parity restore).**
+**MediaJ swapped. Now replacing MediaParity3 and MediaC before running sync.**
 
-**Next step**: 4.1 — unmount dying drive.
+**Next step**: 4b.1 — copy parity3 to new drive.
 
 **Drives:**
-- **Old MediaJ** (dying): Read-only mounted at `/tmp/mediaj-recovery` (`/dev/sdu1`, WDC WD120EMAZ, serial 8CGR2NSE). To be unmounted and retired.
-- **MediaSpare** (has rsync'd data): 9.6TB used, at `/Volumes/MediaSpare` (`/dev/sdm1`). Will be relabeled to MediaJ.
-- **MediaC** (sdb): 6 pending sectors, SMART long test started 2026-03-04 ~13:30, est. 7.5hrs.
+- **MediaJ** (`/dev/sdm1`, 12.7TB): Restored from rsync. Mounted, in mergerfs. 8 files missing (to re-download).
+- **Old MediaJ**: Physically removed and retired.
+- **MediaParity3** (`/dev/sdc1`, 12.7TB): Current parity drive, to be reformatted as MediaC replacement.
+- **MediaParity3.New** (`/dev/sdh1`, 16.4TB): New drive, empty, mounted at `/Volumes/MediaParity3.New`. Will become MediaParity3.
+- **MediaC** (`/dev/sdb`, 2.7TB): Seagate ST33000651AS, 67K hours, 6 pending sectors. To be retired.
+
+**Snapraid cron**: Disabled (step 4.2). Must re-enable after sync (step 4c.5).
 
 **Infrastructure fixes applied 2026-03-04 (P0):**
 - Killed stuck snapraid processes, removed stale lock, fixed stale content file
@@ -127,8 +146,3 @@ configured for d10 (`/Volumes/MediaJ/`), not to MediaSpare.
 - Fixed sendmail-system (netcat→curl) — ALL prior email alerts were silently dropped
 - Rewrote /etc/smartd.conf: 18 drives pinned by stable ata-ID paths, monthly self-tests
 - Root cause of May–Dec sync gap identified (interrupted sync + MAILTO="" suppression)
-
-**Still pending:**
-- MergerFS: MediaJ is not in the pool. Files on MediaJ are not visible through `/Volumes/Media`.
-- SnapRAID: Unlocked, not running. Content files synced to May 1, 2025 snapshot. Triple parity intact (~1M files on d10).
-- Radarr/Sonarr: Running but should be paused during recovery to avoid wasted re-downloads.

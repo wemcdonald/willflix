@@ -41,7 +41,7 @@ This is the ops repo for a personal headless Ubuntu server (hostname: `lafayette
 | `/willflix/docker/appdata/` | Container volumes (gitignored) |
 | `/willflix/secrets/` | git-crypt encrypted secrets |
 | `/willflix/bin/` | Admin scripts, cron scripts (`bin/cron/`) |
-| `/willflix/etc/` | System configs (smartd, systemd units, crontab) |
+| `/willflix/etc/` | System configs — **source of truth** for `/etc/` files. See `etc/AGENTS.md`. |
 | `/willflix/docs/` | Documentation, postmortems, plans |
 | `/docker` | Compat symlink → `/willflix/docker` |
 | `/Volumes/Media*/` | Individual data/parity drive mounts |
@@ -93,12 +93,9 @@ sudo ~/bin/cron/check_snapraid_freshness
 
 ## Known Issues / Watch Items
 
-- **MediaC (sdb)**: Seagate ST33000651AS, 67K hours, 6 pending sectors. Oldest drive, likely next to fail.
-- **MediaJ recovery in progress**: Dying drive being rsynced to MediaSpare, then snapraid fix. See `docs/mediaj-recovery-plan.md`.
-- **No hot spare**: MediaSpare is being consumed for MediaJ recovery. Need to buy replacement.
-- **PostgreSQL has no backup**: authentik, nextcloud, healthdata DBs are unprotected.
-- **ofelia**: Crash-looping ("empty scheduler"), needs config fix.
-- **authentik-worker**: Unhealthy for 25+ days, stale heartbeat.
+- **MediaJ recovery wrapping up**: Drive swapped, data restored via rsync, snapraid sync running. 8 files to re-download. See `docs/mediaj-recovery-plan.md`.
+- **MediaC.Old (sdb)**: Retired Seagate ST33000651AS still physically installed. Remove when convenient.
+- **No hot spare**: MediaSpare consumed for MediaJ/MediaC recovery. Need to buy replacement. When doing so, relabel physical drive caddies: Label "MediaSpare" should say "Parity3". "Parity3" should say "MediaC". "MediaC" should be removed. New drive should say "MediaSpare"
 
 ## Incident History
 
