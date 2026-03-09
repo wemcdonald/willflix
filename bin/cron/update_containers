@@ -49,13 +49,60 @@ def plex_active_streams() -> int:
         return -1  # unknown — treat as busy to be safe
 
 
-def get_image_id(service: str) -> str:
-    """Return the current image ID for a running container."""
+def get_container_image_id(service: str) -> str:
+    """Return the image ID currently used by a running container.
+
+    Tries both the service name (for containers with explicit container_name)
+    and the default compose naming (docker-<service>-1).
+    """
+    for name in [service, f"docker-{service}-1"]:
+        result = subprocess.run(
+            ["docker", "inspect", "--format", "{{.Image}}", name],
+            capture_output=True, text=True
+        )
+        if result.returncode == 0 and result.stdout.strip():
+            return result.stdout.strip()
+    return ""
+
+
+def remove_container(service: str):
+    """Force-remove any existing container that could conflict with this service.
+
+    Compose can't stop/remove containers it doesn't own (no project labels),
+    so we do it manually before asking compose to recreate.
+    """
+    for name in [service, f"docker-{service}-1"]:
+        result = subprocess.run(
+            ["docker", "rm", "-f", name],
+            capture_output=True, text=True
+        )
+        if result.returncode == 0:
+            return
+
+
+def get_local_image_id(image: str) -> str:
+    """Return the ID of a locally stored image (reflects latest pull)."""
     result = subprocess.run(
-        ["docker", "inspect", "--format", "{{.Image}}", service],
+        ["docker", "image", "inspect", "--format", "{{.Id}}", image],
         capture_output=True, text=True
     )
     return result.stdout.strip()
+
+
+def get_compose_service_images() -> dict[str, str]:
+    """Return {service_name: image_name} from the merged compose config."""
+    result = compose("config", "--format", "json", capture=True)
+    if result.returncode != 0:
+        return {}
+    try:
+        data = json.loads(result.stdout)
+        return {
+            svc: cfg["image"]
+            for svc, cfg in data.get("services", {}).items()
+            if "image" in cfg
+        }
+    except (json.JSONDecodeError, KeyError):
+        return {}
 
 
 def compose(*args, capture=False) -> subprocess.CompletedProcess:
@@ -92,8 +139,8 @@ def main():
     services = get_services()
     log.info(f"Found {len(services)} services")
 
-    # Snapshot image IDs before restart to detect actual updates
-    before = {svc: get_image_id(svc) for svc in services}
+    # Map service → image name so we can compare pulled vs running IDs
+    svc_images = get_compose_service_images()
 
     # Decide Plex handling
     plex_skip_reason = None
@@ -117,41 +164,47 @@ def main():
             log.info(f"  Skipping plex: {plex_skip_reason}")
             continue
 
-        log.info(f"  Restarting {svc}...")
-        if not args.dry_run:
-            result = compose("up", "-d", "--no-deps", svc, capture=True)
-            if result.returncode != 0:
-                log.warning(f"  {svc} failed: {result.stderr.strip()[:200]}")
+        # Check whether a new image is actually available
+        image_name = svc_images.get(svc, "")
+        if image_name:
+            pulled_id = get_local_image_id(image_name)
+            running_id = get_container_image_id(svc)
+            if running_id and pulled_id and running_id == pulled_id:
+                log.info(f"  Skipping {svc} (already up to date)")
+                continue
+
+        if args.dry_run:
+            log.info(f"  Would update {svc}")
+            updated.append(svc)
+            continue
+
+        log.info(f"  Updating {svc}...")
+        remove_container(svc)
+        result = compose("up", "-d", "--no-deps", "--force-recreate", svc, capture=True)
+        if result.returncode != 0:
+            log.warning(f"  {svc} failed: {result.stderr.strip()[:200]}")
+        else:
+            updated.append(svc)
 
     if not args.dry_run:
-        # Check which services actually got a new image
-        after = {svc: get_image_id(svc) for svc in services}
-        for svc in services:
-            if svc not in SKIP_SERVICES and before.get(svc) and after.get(svc):
-                if before[svc] != after[svc]:
-                    updated.append(svc)
-
-    if args.dry_run:
-        to_update = [s for s in services if s not in SKIP_SERVICES and
-                     not (s == "plex" and plex_skip_reason)]
-        log.info(f"\nDry run — would restart: {', '.join(to_update)}")
-        if skipped:
-            log.info(f"Would skip: {', '.join(skipped)}")
-        return
+        # Remove containers for services that no longer exist in compose.yml
+        log.info("Removing orphaned containers...")
+        compose("up", "-d", "--remove-orphans", "--no-recreate")
 
     # Log and report
     if updated:
         log.info(f"\nUpdated: {', '.join(updated)}")
-        log_maintenance([f"Updated containers: {', '.join(updated)}"])
+        if not args.dry_run:
+            log_maintenance([f"Updated containers: {', '.join(updated)}"])
     else:
         log.info("\nNo containers had new images")
 
     if skipped:
         log.info(f"Skipped: {', '.join(skipped)}")
-        if any("plex" in s for s in skipped):
+        if not args.dry_run and any("plex" in s for s in skipped):
             log_maintenance([f"Skipped plex: {plex_skip_reason}"])
 
-    if updated:
+    if updated and not args.dry_run:
         body = f"Updated: {', '.join(updated)}"
         if skipped:
             body += f"\nSkipped: {', '.join(skipped)}"
