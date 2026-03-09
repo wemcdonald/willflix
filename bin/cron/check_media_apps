@@ -17,7 +17,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 from lib import config, notify
 
-logging.basicConfig(level=logging.INFO, format="%(message)s")
+logging.basicConfig(level=logging.WARNING, format="%(message)s")
 log = logging.getLogger(__name__)
 
 
@@ -227,9 +227,9 @@ def build_report(issues: dict) -> tuple:
     subject = f"Media apps: {total_issues} issues on {hostname}"
     body = "\n".join(parts)
     body += "\nCheck the UIs:\n"
-    body += "  Sonarr: http://localhost:8989/queue\n"
-    body += "  Radarr: http://localhost:7878/queue\n"
-    body += "  NZBGet: http://localhost:6789"
+    body += "  Sonarr: http://sonarr.willflix.org/queue\n"
+    body += "  Radarr: http://radarr.willflix.org/queue\n"
+    body += "  NZBGet: http://nzbget.willflix.org"
 
     return subject, body
 
@@ -358,10 +358,9 @@ def main():
             severity = "CRITICAL"
 
         notify.send(severity, "media-app-health", subject, body)
-        log.info(f"Alert sent: {subject}")
+        # Print to stdout so cron email includes details
+        print(f"{subject}\n\n{body}")
         _log_issues(issues)
-    else:
-        log.info("All media apps healthy")
 
     # Touch freshness stamp
     stamp = Path("/var/tmp/willflix-monitors/check_media_apps")

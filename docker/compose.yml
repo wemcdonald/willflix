@@ -184,7 +184,7 @@ services:
       - VPN_SERVICE_PROVIDER=privado
       - OPENVPN_USER=twzjmvquku
       - OPENVPN_PASSWORD_FILE=/run/secrets/openvpn_password
-      - SERVER_COUNTRIES=United States
+      - SERVER_COUNTRIES=USA
       - FIREWALL_VPN_INPUT_PORTS=6881
       # Wireguard:
       # - WIREGUARD_PRIVATE_KEY=wOEI9rqqbDwnN8/Bpp22sVz48T71vJ4fYmFWujulwUU=
@@ -470,6 +470,10 @@ services:
 
   jdownloader:
     image: jlesage/jdownloader-2
+    environment:
+      - USER_ID=122
+      - GROUP_ID=129
+      - UMASK=002
     ports:
       - 5800:5800
       #- 5900:5900 # VNC access
