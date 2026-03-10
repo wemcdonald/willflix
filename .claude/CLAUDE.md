@@ -38,6 +38,7 @@ This is the ops repo for a personal headless Ubuntu server (hostname: `lafayette
 |------|---------|
 | `/willflix/` | This repo — everything below |
 | `/willflix/docker/compose.yml` | Main Docker compose file |
+| `/willflix/docker/images/` | Custom-built Docker images (Dockerfile + source) |
 | `/willflix/docker/appdata/` | Container volumes (gitignored) |
 | `/willflix/secrets/` | git-crypt encrypted secrets |
 | `/willflix/bin/` | Admin scripts, cron scripts (`bin/cron/`) |

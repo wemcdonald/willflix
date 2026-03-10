@@ -44,6 +44,8 @@ Ops repo for a personal headless media server (hostname: lafayette). Contains mo
 - Reference drives by label (MediaA, MediaB, etc.) in documentation
 
 ### Docker
-- Docker config lives in `/docker/` (separate repo), not here
+- Docker config lives in `/willflix/docker/` (`/docker` is a symlink to the same)
+- `docker/compose.yml` — main compose file for all ~40 services
+- `docker/images/` — custom-built images (Dockerfile + vendored source); one subdirectory per image
+- `docker/appdata/` — container volumes (gitignored)
 - Service management: always specify names, never bare `docker compose up -d`
-- See `/docker/.claude/CLAUDE.md` for Docker-specific conventions

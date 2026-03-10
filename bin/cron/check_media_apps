@@ -115,7 +115,12 @@ class SonarrRadarrChecker:
         if not data:
             return []
         return [
-            {"type": h.get("type", ""), "message": h.get("message", "")}
+            {
+                "type": h.get("type", ""),
+                "message": h.get("message", ""),
+                "source": h.get("source", ""),
+                "wikiUrl": h.get("wikiUrl", ""),
+            }
             for h in data
             if h.get("type") in ("warning", "error")
             and h.get("source") != "UpdateCheck"  # handled by nightly update_containers
@@ -197,6 +202,28 @@ def build_report(issues: dict) -> tuple:
         return None, None
 
     hostname = os.uname().nodename
+
+    # Maps health check source names to the relevant settings page path.
+    HEALTH_SOURCE_PATHS = {
+        "NotificationStatusCheck": "/settings/connect",
+        "NotificationStatus": "/settings/connect",
+        "IndexerRssCheck": "/settings/indexers",
+        "IndexerSearchCheck": "/settings/indexers",
+        "IndexerStatusCheck": "/settings/indexers",
+        "IndexerStatus": "/settings/indexers",
+        "DownloadClientStatusCheck": "/settings/downloadclients",
+        "DownloadClientCheck": "/settings/downloadclients",
+        "DownloadClientStatus": "/settings/downloadclients",
+        "ImportMechanismCheck": "/settings/mediamanagement",
+        "RootFolderCheck": "/settings/mediamanagement",
+        "MountCheck": "/settings/mediamanagement",
+    }
+
+    APP_BASE_URLS = {
+        "Sonarr": "http://sonarr.willflix.org",
+        "Radarr": "http://radarr.willflix.org",
+    }
+
     parts = []
     total_issues = 0
 
@@ -205,6 +232,8 @@ def build_report(issues: dict) -> tuple:
             continue
 
         parts.append(f"--- {app} ---")
+        base_url = APP_BASE_URLS.get(app, "")
+
         for category, items in app_issues.items():
             if not items:
                 continue
@@ -218,6 +247,17 @@ def build_report(issues: dict) -> tuple:
                         parts.append(f"    - {detail}: {reason}")
                     else:
                         parts.append(f"    - {detail}")
+
+                    # For health warnings, add a direct fix link and wiki URL
+                    source = item.get("source", "")
+                    wiki = item.get("wikiUrl", "")
+                    settings_path = HEALTH_SOURCE_PATHS.get(source)
+                    if base_url and settings_path:
+                        parts.append(f"      Fix: {base_url}{settings_path}")
+                    elif base_url and source:
+                        parts.append(f"      Fix: {base_url}/system/status")
+                    if wiki:
+                        parts.append(f"      Docs: {wiki}")
                 else:
                     parts.append(f"    - {item}")
             if len(items) > 10:
@@ -226,10 +266,12 @@ def build_report(issues: dict) -> tuple:
 
     subject = f"Media apps: {total_issues} issues on {hostname}"
     body = "\n".join(parts)
-    body += "\nCheck the UIs:\n"
-    body += "  Sonarr: http://sonarr.willflix.org/queue\n"
-    body += "  Radarr: http://radarr.willflix.org/queue\n"
-    body += "  NZBGet: http://nzbget.willflix.org"
+    body += "\nQuick links:\n"
+    body += "  Sonarr queue:   http://sonarr.willflix.org/activity/queue\n"
+    body += "  Sonarr health:  http://sonarr.willflix.org/system/status\n"
+    body += "  Radarr queue:   http://radarr.willflix.org/activity/queue\n"
+    body += "  Radarr health:  http://radarr.willflix.org/system/status\n"
+    body += "  NZBGet:         http://nzbget.willflix.org"
 
     return subject, body
 

@@ -303,6 +303,23 @@ services:
     ports:
       - 127.0.0.1:48080:8080
 
+  plex-autoscan:
+    build:
+      context: /willflix/docker/images/plex-autoscan
+    container_name: plex-autoscan
+    environment:
+      - PLEX_AUTOSCAN_CONFIG=/config/config.json
+    volumes:
+      - /willflix/docker/appdata/plex-autoscan/config:/config
+      - /var/run/docker.sock:/var/run/docker.sock
+      - /Volumes/Media:/Volumes/Media:ro
+      - /Volumes/Plex:/Volumes/Plex:ro
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    restart: unless-stopped
+    networks:
+      - traefik_public
+
   sonarr:
     image: lscr.io/linuxserver/sonarr:latest
     container_name: sonarr
@@ -530,10 +547,10 @@ services:
         #- CLI_ARGS= #optional
     volumes:
       - /willflix/docker/appdata/calibre:/config
-      - /Volumes/Media/Calibre:/books
+      - /Volumes/Media/Ebooks/CalibreLibrary:/books
     ports:
-      - 58080:8080
-      - 58181:8181
+      - 58080:8080 
+      - 58181:8181 # VNC https://willflix:58181/
       - 58081:8081
     restart: unless-stopped
     labels:
@@ -550,10 +567,11 @@ services:
       - PUID=501
       - PGID=501
       - TZ=America/Los_Angeles
+      - NETWORK_SHARE_MODE=true
     volumes:
       - /willflix/docker/appdata/calibre-web-automated/cwa:/config
-      - /willflix/docker/appdata/calibre-ingest:/cwa-book-ingest
-      - /Volumes/Media/Calibre:/calibre-library
+      - /Volumes/Media/Ebooks/incoming/:/cwa-book-ingest
+      - /Volumes/Media/Ebooks/CalibreLibrary:/calibre-library
       - /willflix/docker/appdata/calibre-web-automated/s6-overlay/s6-rc.d/calibre-content-server:/etc/s6-overlay/s6-rc.d/calibre-content-server
     restart: unless-stopped
     ports:
@@ -597,44 +615,29 @@ services:
       - traefik_public
       - default
 
-  calibre-web-book-downloader:
-    # build:
-    #   context: /home/will/code/calibre-web-automated-book-downloader
-    #   dockerfile: Dockerfile
-    #   target: cwa-bd
-    image: wemcdonald/calibre-web-automated-book-downloader:latest
-    container_name: calibre-web-book-downloader
+  shelfmark:
+    image: ghcr.io/calibrain/shelfmark:latest
+    container_name: shelfmark
     environment:
+      - PUID=501
+      - PGID=501
       - FLASK_PORT=8084
-      - LOG_LEVEL=info
-      - BOOK_LANGUAGE=en
-      - USE_BOOK_TITLE=true
       - TZ=America/Los_Angeles
-      - APP_ENV=prod
-      - UID=501
-      - GID=501
+      - SEARCH_MODE=direct
       - USING_TOR=false
-      - USE_CF_BYPASS=true
-      - BYPASS_METHOD=byparr
-      - BYPARR_URL=http://byparr:8191
-      - BYPARR_PATH=/v1
-      - BYPARR_TIMEOUT=60000
-      # - CWA_DB_PATH=/auth/app.db
-    depends_on:
-      - byparr
     volumes:
-      - /willflix/docker/appdata/calibre-ingest:/cwa-book-ingest
-      # - /willflix/docker/appdata/calibre-web-automated/app.db:/auth/app.db:ro
+      - /willflix/docker/appdata/shelfmark:/config
+      - /Volumes/Media/Ebooks/incoming:/books
     ports:
       - 8084:8084
     restart: unless-stopped
     labels:
       - "traefik.enable=true"
-      - "traefik.http.services.calibre-web-book-downloader.loadbalancer.server.port=8084"
-      - "traefik.http.routers.calibre-web-book-downloader.rule=Host(`bookstore.willflix.org`)"
-      - "traefik.http.routers.calibre-web-book-downloader.entrypoints=websecure"
-      - "traefik.http.routers.calibre-web-book-downloader.tls.certresolver=le"
-      - "traefik.http.routers.calibre-web-book-downloader.middlewares=authentik-forward@file"
+      - "traefik.http.services.shelfmark.loadbalancer.server.port=8084"
+      - "traefik.http.routers.shelfmark.rule=Host(`bookstore.willflix.org`)"
+      - "traefik.http.routers.shelfmark.entrypoints=websecure"
+      - "traefik.http.routers.shelfmark.tls.certresolver=le"
+      - "traefik.http.routers.shelfmark.middlewares=authentik-forward@file"
     networks:
       - traefik_public
 
