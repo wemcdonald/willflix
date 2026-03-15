@@ -11,8 +11,7 @@ Files here are the **canonical versions** of system config files. They are maint
 | `fstab` | `/etc/fstab` | Manual (review before applying) |
 | `root-crontab` | `sudo crontab -l` | `rebuild-lafayette` via `crontab root-crontab` |
 | `willflix-check-backups.conf` | Read by `bin/cron/willflix-check-backups` | Direct (same path) |
-| `willflix-check-docker.ignore` | Read by `bin/cron/willflix-check-docker` | Direct (same path) |
-| `willflix-check-systemd.ignore` | Read by `bin/cron/willflix-check-systemd` | Direct (same path) |
+| `willflix-services.conf` | Read by `bin/cron/willflix-check-services` | Direct (same path) |
 | `willflix-notify.config` | Read by `bin/willflix-notify` | Direct (same path) |
 | `systemd/` | `/etc/systemd/system/` | `rebuild-lafayette` |
 | `backup.d/` | Backup job configs | Read by backup scripts |

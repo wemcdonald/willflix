@@ -15,8 +15,7 @@ MAILTO=will
 0 9 * * 1-6 /willflix/bin/cron/willflix-heartbeat --silent
 
 # Service health checks (every 15 min)
-*/15 * * * * /willflix/bin/cron/willflix-check-docker
-*/15 * * * * /willflix/bin/cron/willflix-check-systemd
+*/15 * * * * /willflix/bin/cron/willflix-check-services
 
 # Backup freshness (daily after heartbeat)
 15 9 * * * /willflix/bin/cron/willflix-check-backups
