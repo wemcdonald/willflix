@@ -59,12 +59,18 @@ def match_container(service_name, containers):
         return service_name, containers[service_name]
 
     # Pattern match: <prefix>-<name>-<digits>
+    # Collect all matches; prefer a running container over a stopped one.
     pattern = re.compile(r"^.+-" + re.escape(service_name) + r"-\d+$")
-    for cname, status in containers.items():
-        if pattern.match(cname):
-            return cname, status
+    matches = [(cn, st) for cn, st in containers.items() if pattern.match(cn)]
 
-    return None, None
+    if not matches:
+        return None, None
+
+    # Prefer running containers (status starts with "Up")
+    for cn, st in matches:
+        if st.startswith("Up"):
+            return cn, st
+    return matches[0]
 
 
 def check_systemd_unit(unit_name):
