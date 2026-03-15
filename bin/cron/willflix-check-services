@@ -1,0 +1,251 @@
+#!/usr/bin/env python3
+"""willflix-check-services — unified service health monitor.
+
+Reads etc/willflix-services.conf and checks each service based on type
+(docker/systemd/both) and alerts at the configured tier severity.
+
+Replaces willflix-check-docker and willflix-check-systemd.
+"""
+
+import re
+import subprocess
+import sys
+from pathlib import Path
+
+import yaml
+
+REPO_DIR = Path(__file__).resolve().parents[2]
+CONFIG_FILE = REPO_DIR / "etc" / "willflix-services.conf"
+NOTIFY_BIN = REPO_DIR / "bin" / "willflix-notify"
+MONITOR_STAMP = Path("/var/tmp/willflix-monitors/willflix-check-services")
+HOSTNAME = subprocess.check_output(["hostname"], text=True).strip()
+
+TIER_SEVERITY = {
+    "critical": "CRITICAL",
+    "warning": "WARNING",
+    "info": "INFO",
+}
+
+
+def load_config():
+    """Load and validate the service config."""
+    with open(CONFIG_FILE) as f:
+        data = yaml.safe_load(f)
+    return data.get("services", {})
+
+
+def get_docker_containers():
+    """Return dict of {container_name: status_string} for all containers."""
+    result = subprocess.run(
+        ["docker", "ps", "-a", "--format", "{{.Names}}\t{{.Status}}"],
+        capture_output=True, text=True, timeout=30,
+    )
+    containers = {}
+    for line in result.stdout.strip().splitlines():
+        if "\t" in line:
+            name, status = line.split("\t", 1)
+            containers[name] = status
+    return containers
+
+
+def match_container(service_name, containers):
+    """Find a container matching service_name.
+
+    Matches exactly 'service_name' or '<prefix>-service_name-<digits>'.
+    Returns (container_name, status) or (None, None).
+    """
+    # Exact match first
+    if service_name in containers:
+        return service_name, containers[service_name]
+
+    # Pattern match: <prefix>-<name>-<digits>
+    pattern = re.compile(r"^.+-" + re.escape(service_name) + r"-\d+$")
+    for cname, status in containers.items():
+        if pattern.match(cname):
+            return cname, status
+
+    return None, None
+
+
+def check_systemd_unit(unit_name):
+    """Check if a systemd unit is active. Returns (is_active, status_text)."""
+    result = subprocess.run(
+        ["systemctl", "is-active", unit_name],
+        capture_output=True, text=True,
+    )
+    status = result.stdout.strip()
+    return status == "active", status
+
+
+def notify(severity, key, subject, body, dedup_window=None):
+    """Send alert via willflix-notify."""
+    cmd = [
+        str(NOTIFY_BIN),
+        "--severity", severity,
+        "--key", key,
+        "--subject", subject,
+        "--body", body,
+    ]
+    if dedup_window:
+        cmd.extend(["--dedup-window", dedup_window])
+    subprocess.run(cmd, check=False)
+
+
+def check_docker_service(service_name, tier, containers):
+    """Check a docker service. Returns list of issues."""
+    severity = TIER_SEVERITY[tier]
+    cname, status = match_container(service_name, containers)
+
+    if cname is None:
+        notify(severity, f"svc-missing-{service_name}",
+               f"Service: {service_name} not found on {HOSTNAME}",
+               f"No container matching '{service_name}' exists.\n\n"
+               f"Check:\n  cd /willflix/docker && docker compose ps {service_name}\n"
+               f"  docker compose up -d {service_name}")
+        return [f"{service_name}: container not found"]
+
+    if status.startswith("Restarting"):
+        # Crash loops are always CRITICAL regardless of tier
+        notify("CRITICAL", f"svc-crashloop-{service_name}",
+               f"Service: {service_name} crash-looping on {HOSTNAME}",
+               f"Container '{cname}' is restarting (crash loop).\n"
+               f"Status: {status}\n\n"
+               f"Check:\n  docker logs {cname} --tail 30")
+        return [f"{service_name}: crash-looping"]
+
+    if not status.startswith("Up"):
+        notify(severity, f"svc-down-{service_name}",
+               f"Service: {service_name} not running on {HOSTNAME}",
+               f"Container '{cname}' is not running.\n"
+               f"Status: {status}\n\n"
+               f"Check:\n  docker logs {cname} --tail 30\n"
+               f"  cd /willflix/docker && docker compose up -d {service_name}")
+        return [f"{service_name}: not running ({status})"]
+
+    if "(unhealthy)" in status:
+        notify(severity, f"svc-unhealthy-{service_name}",
+               f"Service: {service_name} unhealthy on {HOSTNAME}",
+               f"Container '{cname}' is running but failing its healthcheck.\n"
+               f"Status: {status}\n\n"
+               f"Check:\n  docker inspect {cname} --format '{{{{json .State.Health}}}}' | python3 -m json.tool\n"
+               f"  docker logs {cname} --tail 30")
+        return [f"{service_name}: unhealthy"]
+
+    return []
+
+
+def check_systemd_service(service_name, tier, unit_override=None):
+    """Check a systemd service. Returns list of issues."""
+    severity = TIER_SEVERITY[tier]
+    unit = unit_override or f"{service_name}.service"
+    is_active, status = check_systemd_unit(unit)
+
+    if not is_active:
+        notify(severity, f"svc-systemd-{service_name}",
+               f"Service: {unit} not active on {HOSTNAME}",
+               f"Systemd unit '{unit}' is {status}.\n\n"
+               f"Check:\n  systemctl status {unit}\n"
+               f"  journalctl -u {unit} --no-pager -n 30")
+        return [f"{service_name}: systemd {status}"]
+
+    return []
+
+
+def check_unknown_containers(services, containers):
+    """Alert on containers not matched by any config entry."""
+    # Build set of all container names claimed by config
+    matched_names = set()
+    for svc_name in services:
+        cname, _ = match_container(svc_name, containers)
+        if cname:
+            matched_names.add(cname)
+
+    for cname, status in containers.items():
+        if cname in matched_names:
+            continue
+        # Only alert on containers that are running or crash-looping
+        # (stopped unknown containers are not interesting)
+        if status.startswith("Up") or status.startswith("Restarting"):
+            notify("INFO", f"svc-unknown-container-{cname}",
+                   f"Unknown container: {cname} on {HOSTNAME}",
+                   f"Container '{cname}' is running but not listed in willflix-services.conf.\n"
+                   f"Status: {status}\n\n"
+                   f"Add it to etc/willflix-services.conf to monitor it,\n"
+                   f"or add it with 'tier: ignore' to suppress this alert.",
+                   dedup_window="3d")
+
+
+def check_unknown_systemd(services):
+    """Alert on failed systemd units not matched by any config entry."""
+    result = subprocess.run(
+        ["systemctl", "--failed", "--no-legend"],
+        capture_output=True, text=True,
+    )
+    # Collect known systemd unit names from config
+    known_units = set()
+    for svc_name, svc_cfg in services.items():
+        svc_type = svc_cfg.get("type", "docker")
+        if svc_type in ("systemd", "both"):
+            unit = svc_cfg.get("systemd", f"{svc_name}.service")
+            known_units.add(unit)
+
+    for line in result.stdout.strip().splitlines():
+        if not line:
+            continue
+        # Format: "● unit.service loaded failed failed Description..."
+        parts = line.split()
+        if len(parts) < 2:
+            continue
+        unit = parts[1]
+        if unit in known_units:
+            continue
+        notify("INFO", f"svc-unknown-systemd-{unit}",
+               f"Unknown failed unit: {unit} on {HOSTNAME}",
+               f"Systemd unit '{unit}' is in failed state but not in willflix-services.conf.\n\n"
+               f"Check:\n  systemctl status {unit}\n"
+               f"  journalctl -u {unit} --no-pager -n 30\n\n"
+               f"Add it to etc/willflix-services.conf to monitor it,\n"
+               f"or add it with 'tier: ignore' to suppress this alert.",
+               dedup_window="3d")
+
+
+def main():
+    services = load_config()
+    containers = get_docker_containers()
+    issues = []
+
+    for svc_name, svc_cfg in services.items():
+        tier = svc_cfg.get("tier", "warning")
+        svc_type = svc_cfg.get("type", "docker")
+
+        if tier == "ignore":
+            continue
+
+        if tier not in TIER_SEVERITY:
+            print(f"Unknown tier '{tier}' for service '{svc_name}', skipping", file=sys.stderr)
+            continue
+
+        if svc_type in ("docker", "both"):
+            issues.extend(check_docker_service(svc_name, tier, containers))
+
+        if svc_type in ("systemd", "both"):
+            unit_override = svc_cfg.get("systemd")
+            issues.extend(check_systemd_service(svc_name, tier, unit_override))
+
+    # Check for unknown services
+    check_unknown_containers(services, containers)
+    check_unknown_systemd(services)
+
+    # Summary to stdout (for cron email)
+    if issues:
+        print(f"willflix-check-services: {len(issues)} issue(s) found")
+        for issue in issues:
+            print(f"  - {issue}")
+
+    # Touch freshness stamp
+    MONITOR_STAMP.parent.mkdir(parents=True, exist_ok=True)
+    MONITOR_STAMP.touch()
+
+
+if __name__ == "__main__":
+    main()
