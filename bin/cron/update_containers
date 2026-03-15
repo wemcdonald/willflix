@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 """update_containers — pull and restart Docker containers with new images.
 
+Reads etc/willflix-services.conf to determine which services to upgrade.
+Only services listed in the config (with upgrade != false) are updated.
 Plex is skipped if active streams are detected (override with --force-plex).
-Services can be excluded permanently via SKIP_SERVICES below.
 
 Usage:
   update_containers              # normal nightly run
@@ -19,22 +20,27 @@ import urllib.request
 from datetime import datetime
 from pathlib import Path
 
+import yaml
+
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from lib import config, notify
 
 logging.basicConfig(level=logging.INFO, format="%(message)s")
 log = logging.getLogger(__name__)
 
+REPO_DIR = Path(__file__).resolve().parents[2]
 COMPOSE_FILE = "/willflix/docker/compose.yml"
+SERVICES_CONFIG = REPO_DIR / "etc" / "willflix-services.conf"
 MAINTENANCE_LOG = Path("/willflix/log/maintenance.log")
 
 TAUTULLI_URL = "http://localhost:48181"
 
-# Services to never auto-update (manually managed or pinned versions)
-SKIP_SERVICES = {
-    "traefik",    # pinned to v2.10, major version upgrades need manual review
-    "nextcloud",  # stuck on v31, needs stepped upgrade (v31→v32→v33)
-}
+
+def load_services_config() -> dict:
+    """Load willflix-services.conf and return the services dict."""
+    with open(SERVICES_CONFIG) as f:
+        data = yaml.safe_load(f)
+    return data.get("services", {})
 
 
 def plex_active_streams() -> int:
@@ -133,6 +139,9 @@ def main():
                         help="Show what would be updated without acting")
     args = parser.parse_args()
 
+    # Load service config to determine which services to upgrade
+    svc_config = load_services_config()
+
     log.info("Pulling latest images...")
     if not args.dry_run:
         compose("pull", "--ignore-pull-failures")
@@ -156,7 +165,13 @@ def main():
     skipped = []
 
     for svc in services:
-        if svc in SKIP_SERVICES:
+        # Only upgrade services listed in willflix-services.conf
+        if svc not in svc_config:
+            skipped.append(f"{svc} (unlisted)")
+            continue
+
+        # Skip services with upgrade: false
+        if svc_config[svc].get("upgrade") is False:
             skipped.append(f"{svc} (pinned)")
             continue
 
