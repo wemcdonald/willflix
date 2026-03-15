@@ -4,8 +4,7 @@
 
 set -euo pipefail
 
-SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-NOTIFY="$(cd "$SCRIPT_DIR/.." && pwd)/willflix-notify"
+NOTIFY="/willflix/bin/willflix-notify"
 
 SCRUB_TIMEOUT=43200  # 12 hours max for scrub
 LOGFILE="/var/log/snapraid-daily.log"

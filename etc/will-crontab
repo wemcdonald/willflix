@@ -2,7 +2,6 @@
 # Apply with: crontab -e
 #
 
-0 0 * * * /usr/local/bin/cronic /willflix/bin/cron/backup_calibre && touch /var/tmp/willflix-monitors/backup_calibre
 0 0 * * * /usr/local/bin/cronic /willflix/bin/cron/backup_google_photos && touch /var/tmp/willflix-monitors/backup_google_photos
 #30 0 * * * /usr/local/bin/cronic /willflix/bin/cron/backup_gmail && touch /var/tmp/willflix-monitors/backup_gmail
 #45 0 * * * /usr/local/bin/cronic /willflix/bin/cron/backup_home && touch /var/tmp/willflix-monitors/backup_home

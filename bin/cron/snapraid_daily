@@ -5,8 +5,7 @@
 
 set -euo pipefail
 
-SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-NOTIFY="$(cd "$SCRIPT_DIR/.." && pwd)/willflix-notify"
+NOTIFY="/willflix/bin/willflix-notify"
 MONITOR_STAMP="/var/tmp/willflix-monitors/snapraid_daily"
 
 SYNC_TIMEOUT=21600  # 6 hours max for sync
