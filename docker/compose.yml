@@ -674,7 +674,7 @@ services:
       - traefik_public
 
   nextcloud:
-    image: nextcloud
+    image: nextcloud:32
     restart: always
     #user: www-data
     ports:
