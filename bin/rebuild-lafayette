@@ -282,9 +282,9 @@ stage_6_configs() {
     info "/docker → $REPO_DIR/docker"
 
     # Compose compat (config/ dir with symlinks)
-    mkdir -p "$REPO_DIR/docker/config"
-    ln -sfn "$REPO_DIR/docker/compose.yml" "$REPO_DIR/docker/config/docker-compose.yml"
-    ln -sfn "$REPO_DIR/secrets" "$REPO_DIR/docker/config/secrets"
+    mkdir -p "$REPO_DIR/willflix/docker"
+    ln -sfn "$REPO_DIR/docker/compose.yml" "$REPO_DIR/willflix/docker/docker-compose.yml"
+    ln -sfn "$REPO_DIR/secrets" "$REPO_DIR/willflix/docker/secrets"
     info "Docker compat symlinks created"
 
     # Monitor dirs

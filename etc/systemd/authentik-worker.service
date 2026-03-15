@@ -6,7 +6,7 @@ After=docker.service
 [Service]
 Type=oneshot
 RemainAfterExit=true
-WorkingDirectory=/docker/config
+WorkingDirectory=/willflix/docker
 ExecStart=/usr/bin/docker compose up -d authentik-worker
 ExecStop=/usr/bin/docker compose stop authentik-worker
 TimeoutStartSec=0

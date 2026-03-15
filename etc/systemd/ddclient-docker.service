@@ -9,7 +9,7 @@ After=network-online.target
 [Service]
 Type=oneshot
 RemainAfterExit=yes
-WorkingDirectory=/docker/config
+WorkingDirectory=/willflix/docker
 ExecStartPre=/usr/bin/docker compose -f docker-compose.yml pull ddclient
 ExecStart=/usr/bin/docker compose -f docker-compose.yml up -d ddclient
 ExecStop=/usr/bin/docker compose -f docker-compose.yml stop ddclient

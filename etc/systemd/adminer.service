@@ -6,7 +6,7 @@ After=docker.service
 [Service]
 Type=oneshot
 RemainAfterExit=true
-WorkingDirectory=/docker/config
+WorkingDirectory=/willflix/docker
 ExecStart=/usr/bin/docker compose up -d adminer
 ExecStop=/usr/bin/docker compose stop adminer
 TimeoutStartSec=0

@@ -9,7 +9,7 @@ After=network-online.target
 [Service]
 Type=oneshot
 RemainAfterExit=yes
-WorkingDirectory=/docker/config
+WorkingDirectory=/willflix/docker
 ExecStartPre=/usr/bin/docker compose -f docker-compose.yml pull samba
 ExecStart=/usr/bin/docker compose -f docker-compose.yml up -d samba
 ExecStop=/usr/bin/docker compose -f docker-compose.yml stop samba

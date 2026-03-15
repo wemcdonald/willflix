@@ -11,7 +11,7 @@ set -e
 if [ -f "/app/secrets/authentik_api_env" ]; then
     source /app/secrets/authentik_api_env
 else
-    source /docker/config/secrets/authentik_api_env
+    source /willflix/docker/secrets/authentik_api_env
 fi
 
 # Check required environment variables
@@ -19,7 +19,7 @@ if [ -z "$CALIBRE_USER_ROLE" ] || [ -z "$CALIBRE_ADMIN_ROLE" ]; then
     echo -e "${RED}[ERROR]${NC} Missing required environment variables:"
     [ -z "$CALIBRE_USER_ROLE" ] && echo "  - CALIBRE_USER_ROLE not set"
     [ -z "$CALIBRE_ADMIN_ROLE" ] && echo "  - CALIBRE_ADMIN_ROLE not set"
-    echo "Please check /docker/config/secrets/authentik_api_env"
+    echo "Please check /willflix/docker/secrets/authentik_api_env"
     exit 1
 fi
 

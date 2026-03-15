@@ -12,7 +12,7 @@ set -e
 if [ -f "/app/secrets/authentik_api_env" ]; then
     source /app/secrets/authentik_api_env
 else
-    source /docker/config/secrets/authentik_api_env
+    source /willflix/docker/secrets/authentik_api_env
 fi
 
 # Check required environment variables
@@ -20,7 +20,7 @@ if [ -z "$AUTHENTIK_API_KEY" ] || [ -z "$AUTHENTIK_WILLFLIX_GROUP_ID" ]; then
     echo -e "\033[0;31m[ERROR]\033[0m Missing required environment variables:"
     [ -z "$AUTHENTIK_API_KEY" ] && echo "  - AUTHENTIK_API_KEY not set"
     [ -z "$AUTHENTIK_WILLFLIX_GROUP_ID" ] && echo "  - AUTHENTIK_WILLFLIX_GROUP_ID not set"
-    echo "Please check /docker/config/secrets/authentik_api_env"
+    echo "Please check /willflix/docker/secrets/authentik_api_env"
     exit 1
 fi
 

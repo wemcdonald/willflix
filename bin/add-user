@@ -7,7 +7,7 @@
 set -e
 
 # Load configuration
-source /docker/config/secrets/authentik_api_env
+source /willflix/docker/secrets/authentik_api_env
 
 # Check required environment variables
 if [ -z "$AUTHENTIK_API_KEY" ] || [ -z "$AUTHENTIK_WILLFLIX_GROUP_ID" ] || [ -z "$CALIBRE_USER_ROLE" ] || [ -z "$CALIBRE_ADMIN_ROLE" ]; then
@@ -16,7 +16,7 @@ if [ -z "$AUTHENTIK_API_KEY" ] || [ -z "$AUTHENTIK_WILLFLIX_GROUP_ID" ] || [ -z 
     [ -z "$AUTHENTIK_WILLFLIX_GROUP_ID" ] && echo "  - AUTHENTIK_WILLFLIX_GROUP_ID not set"
     [ -z "$CALIBRE_USER_ROLE" ] && echo "  - CALIBRE_USER_ROLE not set"
     [ -z "$CALIBRE_ADMIN_ROLE" ] && echo "  - CALIBRE_ADMIN_ROLE not set"
-    echo "Please check /docker/config/secrets/authentik_api_env"
+    echo "Please check /willflix/docker/secrets/authentik_api_env"
     exit 1
 fi
 
