@@ -32,7 +32,8 @@ TAUTULLI_URL = "http://localhost:48181"
 
 # Services to never auto-update (manually managed or pinned versions)
 SKIP_SERVICES = {
-    "traefik",  # pinned to v2.10, major version upgrades need manual review
+    "traefik",    # pinned to v2.10, major version upgrades need manual review
+    "nextcloud",  # stuck on v31, needs stepped upgrade (v31→v32→v33)
 }
 
 
