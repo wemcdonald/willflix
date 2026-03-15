@@ -26,6 +26,7 @@ KEY=""
 SUBJECT=""
 BODY=""
 TEST_MODE=false
+DEDUP_WINDOW_OVERRIDE=""
 
 # Parse args
 while [[ $# -gt 0 ]]; do
@@ -34,6 +35,7 @@ while [[ $# -gt 0 ]]; do
         --key)      KEY="$2";      shift 2 ;;
         --subject)  SUBJECT="$2";  shift 2 ;;
         --body)     BODY="$2";     shift 2 ;;
+        --dedup-window) DEDUP_WINDOW_OVERRIDE="$2"; shift 2 ;;
         --test)     TEST_MODE=true; shift ;;
         *) echo "Unknown arg: $1" >&2; exit 1 ;;
     esac
@@ -93,19 +95,43 @@ last_reset_epoch() {
     fi
 }
 
+# Convert duration string (e.g. "3d", "12h", "1w") to seconds.
+parse_duration() {
+    local input="$1"
+    local num="${input%[dhwm]}"
+    local unit="${input##*[0-9]}"
+    case "$unit" in
+        m) echo $(( num * 60 )) ;;
+        h) echo $(( num * 3600 )) ;;
+        d) echo $(( num * 86400 )) ;;
+        w) echo $(( num * 604800 )) ;;
+        *) echo "$num" ;;  # assume seconds
+    esac
+}
+
 is_deduped() {
     [[ "$TEST_MODE" == "true" ]] && return 1  # --test bypasses dedup
 
     local keyfile="${DEDUP_DIR}/${KEY}"
     if [[ -f "$keyfile" ]]; then
-        local sent_at age reset_boundary
+        local sent_at age
         sent_at=$(stat -c %Y "$keyfile")
         age=$(( $(date +%s) - sent_at ))
-        reset_boundary=$(last_reset_epoch)
 
-        # Suppress if: sent after the last reset boundary AND within safety cap
-        if [[ "$sent_at" -ge "$reset_boundary" && "$age" -lt "$DEDUP_MAX_WINDOW" ]]; then
-            return 0  # suppress
+        if [[ -n "$DEDUP_WINDOW_OVERRIDE" ]]; then
+            # Fixed window: suppress if sent less than N seconds ago
+            local window
+            window=$(parse_duration "$DEDUP_WINDOW_OVERRIDE")
+            if [[ "$age" -lt "$window" ]]; then
+                return 0  # suppress
+            fi
+        else
+            # Default: daily reset boundary
+            local reset_boundary
+            reset_boundary=$(last_reset_epoch)
+            if [[ "$sent_at" -ge "$reset_boundary" && "$age" -lt "$DEDUP_MAX_WINDOW" ]]; then
+                return 0  # suppress
+            fi
         fi
     fi
     return 1  # not deduped, send it
