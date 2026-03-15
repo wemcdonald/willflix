@@ -1,5 +1,7 @@
-# Application data (container volumes, databases, indexes)
-docker/appdata/
+# Application data (container volumes, databases, indexes — see docker/appdata/.gitignore)
+docker/appdata/*
+!docker/appdata/.gitignore
+!docker/appdata/nzbget/
 docker/logs/
 
 # Compat symlinks (filesystem glue for old /docker/config paths)

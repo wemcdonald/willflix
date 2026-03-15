@@ -473,6 +473,7 @@ services:
       - TZ=America/Los_Angeles
     volumes:
       - /willflix/docker/appdata/nzbget:/config
+      - /willflix/docker/appdata/nzbget/scripts:/Volumes/Media/Downloads/Nzb/scripts
       - /Volumes/Media:/Volumes/Media
     ports:
       - 6789:6789
