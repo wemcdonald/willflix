@@ -18,8 +18,29 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 NOTIFY="$(cd "$SCRIPT_DIR/.." && pwd)/willflix-notify"
-CONTAINER="config-postgres-1"
 DB_USER="will"
+
+# Find the postgres container — handles both "postgres" and "docker-postgres-1" naming
+find_postgres_container() {
+    local name
+    name=$(docker ps --format '{{.Names}}' | grep -xE '(config-|docker-)?postgres(-1)?' | head -1)
+    if [[ -z "$name" ]]; then
+        echo ""
+        return 1
+    fi
+    echo "$name"
+}
+
+CONTAINER=$(find_postgres_container) || {
+    "$NOTIFY" --severity CRITICAL --key "backup-postgres-fail" \
+        --subject "PostgreSQL backup failed on $(hostname)" \
+        --body "Could not find a running postgres container.
+
+Expected a container named 'postgres' or 'config-postgres-1'.
+Check:
+  docker ps | grep postgres"
+    exit 1
+}
 BACKUP_DIR="/Volumes/Bonus1/postgres-backup"
 RETENTION_DAYS=14
 TODAY=$(date +%Y-%m-%d)
