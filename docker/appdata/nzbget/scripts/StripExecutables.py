@@ -32,10 +32,9 @@
 import os
 import sys
 
-# NZBGet exit codes
 POSTPROCESS_SUCCESS = 93
-POSTPROCESS_NONE = 95
 POSTPROCESS_ERROR = 94
+POSTPROCESS_NONE = 95
 
 # Check we're running inside NZBGet
 if "NZBOP_TEMPDIR" not in os.environ:
@@ -55,12 +54,14 @@ if status != "SUCCESS":
     sys.exit(POSTPROCESS_NONE)
 
 # Parse configured extensions
-strip_raw = os.environ.get("NZBPO_STRIPEXTENSIONS", ".exe,.bat,.cmd,.com,.scr,.msi,.vbs,.js,.wsf,.ps1,.url,.lnk,.pif,.reg")
+strip_raw = os.environ.get("NZBPO_STRIPEXTENSIONS",
+    ".exe,.bat,.cmd,.com,.scr,.msi,.vbs,.js,.wsf,.ps1,.url,.lnk,.pif,.reg")
 strip_exts = set(ext.strip().lower() for ext in strip_raw.split(",") if ext.strip())
 
 strip_junk = os.environ.get("NZBPO_STRIPJUNK", "no").lower() == "yes"
 if strip_junk:
-    junk_raw = os.environ.get("NZBPO_JUNKEXTENSIONS", ".nfo,.txt,.jpg,.jpeg,.png,.gif,.bmp,.ico,.xml,.htm,.html")
+    junk_raw = os.environ.get("NZBPO_JUNKEXTENSIONS",
+        ".nfo,.txt,.jpg,.jpeg,.png,.gif,.bmp,.ico,.xml,.htm,.html")
     junk_exts = set(ext.strip().lower() for ext in junk_raw.split(",") if ext.strip())
     strip_exts.update(junk_exts)
 

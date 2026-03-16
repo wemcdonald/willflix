@@ -43,8 +43,17 @@ class SonarrRadarrChecker:
     def _get(self, endpoint: str):
         return api_get(f"{self.base_url}/api/v3/{endpoint}", headers=self.headers)
 
+    # Warnings that are handled automatically (e.g. by NZBGet StripExecutables)
+    # and should not generate alerts.
+    IGNORED_WARNINGS = {"Found executable file"}
+
     def check_queue_errors(self) -> list:
-        """Find queue items with errors or warnings."""
+        """Find queue items with real errors or warnings.
+
+        Skips items whose only status messages are in IGNORED_WARNINGS
+        (e.g. "Found executable file" is handled by NZBGet StripExecutables).
+        Uses trackedDownloadStatus rather than the raw download status field.
+        """
         data = self._get("queue?pageSize=100&includeUnknownSeriesItems=true&includeUnknownMovieItems=true")
         if not data:
             return []
@@ -52,14 +61,22 @@ class SonarrRadarrChecker:
         records = data.get("records", [])
         errors = []
         for item in records:
-            msgs = item.get("statusMessages", [])
-            status = item.get("status", "")
-            if status in ("warning", "failed") or msgs:
-                title = item.get("title", "Unknown")
-                error_text = "; ".join(
-                    m.get("title", "") for m in msgs
-                ) if msgs else status
-                errors.append({"title": title, "error": error_text, "status": status})
+            dl_status = item.get("trackedDownloadStatus", "")
+            if dl_status not in ("warning", "error"):
+                continue
+
+            # Collect all message strings from statusMessages
+            all_msgs = []
+            for sm in item.get("statusMessages", []):
+                all_msgs.extend(sm.get("messages", []))
+
+            # Skip if every message is in the ignored set
+            if all_msgs and all(m in self.IGNORED_WARNINGS for m in all_msgs):
+                continue
+
+            title = item.get("title", "Unknown")
+            error_text = "; ".join(all_msgs) if all_msgs else dl_status
+            errors.append({"title": title, "error": error_text, "status": dl_status})
 
         return errors
 
