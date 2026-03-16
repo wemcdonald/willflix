@@ -7,7 +7,3 @@ if mountpoint -q -- "$DEST" && [[ -d "$SRC/Plex Media Server/" ]]; then
   /usr/bin/rsync --archive --hard-links --sparse --delete --exclude=Cache/Transcode "$SRC/Plex Media Server/" "$DEST/Plex Media Server.backup"
 fi
 # h
-
-# Touch freshness stamp
-install -d -m 1777 /var/tmp/willflix-monitors
-touch /var/tmp/willflix-monitors/backup_plex

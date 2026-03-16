@@ -6,8 +6,6 @@
 set -euo pipefail
 
 NOTIFY="/willflix/bin/willflix-notify"
-MONITOR_STAMP="/var/tmp/willflix-monitors/snapraid_daily"
-
 SYNC_TIMEOUT=21600  # 6 hours max for sync
 LOGFILE="/var/log/snapraid-daily.log"
 
@@ -45,7 +43,3 @@ if ! timeout "$SYNC_TIMEOUT" /usr/local/bin/snapraid --force-zero sync >> "$LOGF
 fi
 
 echo "$(date): snapraid daily completed successfully" >> "$LOGFILE"
-
-# Touch freshness stamp on success
-install -d -m 1777 "$(dirname "$MONITOR_STAMP")"
-touch "$MONITOR_STAMP"

@@ -10,7 +10,6 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 NOTIFY="$(cd "$SCRIPT_DIR/.." && pwd)/willflix-notify"
-MONITOR_STAMP="/var/tmp/willflix-monitors/backup_restic"
 CONFIG_DIR="/willflix/etc/backup.d"
 LOGFILE="/var/log/backup-restic.log"
 
@@ -169,7 +168,3 @@ if [[ "$FAILED" -eq 0 ]]; then
 else
     log "=== Some backups failed — check above ==="
 fi
-
-# Touch freshness stamp (even if some failed — the script itself ran)
-install -d -m 1777 "$(dirname "$MONITOR_STAMP")"
-touch "$MONITOR_STAMP"

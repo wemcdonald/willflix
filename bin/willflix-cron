@@ -1,0 +1,113 @@
+#!/usr/bin/env python3
+"""willflix-cron — cron job wrapper with logging and output suppression.
+
+Captures stdout/stderr to /willflix/log/<script>.log, touches a freshness
+stamp on success, and only surfaces output to cron (triggering MAILTO) if
+the script exits non-zero.
+
+Usage:
+    willflix-cron <script-name> [args...]
+    willflix-cron /full/path/to/script [args...]
+
+Script names without a path are resolved from /willflix/bin/cron/.
+"""
+
+import os
+import subprocess
+import sys
+from datetime import datetime
+from pathlib import Path
+
+REPO_DIR = Path(__file__).resolve().parent.parent
+CRON_DIR = REPO_DIR / "bin" / "cron"
+LOG_DIR = REPO_DIR / "log"
+MONITOR_DIR = Path("/var/tmp/willflix-monitors")
+
+
+def resolve_script(name):
+    """Resolve a script name to a full path."""
+    p = Path(name)
+    if p.is_absolute():
+        return p
+    candidate = CRON_DIR / name
+    if candidate.exists():
+        return candidate
+    # Maybe they passed a relative path
+    if p.exists():
+        return p.resolve()
+    print(f"willflix-cron: script not found: {name}", file=sys.stderr)
+    print(f"  looked in: {candidate}", file=sys.stderr)
+    sys.exit(127)
+
+
+def main():
+    if len(sys.argv) < 2:
+        print("Usage: willflix-cron <script-name> [args...]", file=sys.stderr)
+        sys.exit(1)
+
+    script = resolve_script(sys.argv[1])
+    script_args = sys.argv[2:]
+    script_name = script.stem
+
+    # Ensure log directory exists
+    LOG_DIR.mkdir(parents=True, exist_ok=True)
+    log_file = LOG_DIR / f"{script_name}.log"
+
+    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+    # Run the script, capturing all output
+    try:
+        result = subprocess.run(
+            [str(script)] + script_args,
+            capture_output=True,
+            text=True,
+            timeout=3600,  # 1 hour safety timeout
+        )
+    except subprocess.TimeoutExpired as e:
+        output = (e.stdout or "") + (e.stderr or "")
+        with open(log_file, "a") as f:
+            f.write(f"\n=== {timestamp} === TIMEOUT after 3600s ===\n")
+            if output:
+                f.write(output)
+        print(f"willflix-cron: {script_name} timed out after 3600s", file=sys.stderr)
+        if output:
+            print(output, file=sys.stderr)
+        sys.exit(124)
+    except Exception as e:
+        with open(log_file, "a") as f:
+            f.write(f"\n=== {timestamp} === FAILED TO LAUNCH ===\n")
+            f.write(f"{e}\n")
+        print(f"willflix-cron: failed to run {script_name}: {e}", file=sys.stderr)
+        sys.exit(126)
+
+    # Combine output
+    output = result.stdout + result.stderr
+
+    # Always log
+    with open(log_file, "a") as f:
+        f.write(f"\n=== {timestamp} ===\n")
+        if output.strip():
+            f.write(output)
+            if not output.endswith("\n"):
+                f.write("\n")
+
+    if result.returncode == 0:
+        # Success: touch freshness stamp, stay silent to cron
+        try:
+            MONITOR_DIR.mkdir(parents=True, exist_ok=True)
+            (MONITOR_DIR / script_name).touch()
+        except OSError:
+            pass  # Non-fatal: stamp may be owned by another user
+    else:
+        # Failure: surface to cron via stderr
+        print(
+            f"willflix-cron: {script_name} exited {result.returncode}",
+            file=sys.stderr,
+        )
+        if output.strip():
+            print(output, file=sys.stderr)
+        sys.exit(result.returncode)
+
+
+if __name__ == "__main__":
+    main()

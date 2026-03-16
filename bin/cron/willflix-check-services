@@ -17,7 +17,6 @@ import yaml
 REPO_DIR = Path(__file__).resolve().parents[2]
 CONFIG_FILE = REPO_DIR / "etc" / "willflix-services.conf"
 NOTIFY_BIN = REPO_DIR / "bin" / "willflix-notify"
-MONITOR_STAMP = Path("/var/tmp/willflix-monitors/willflix-check-services")
 HOSTNAME = subprocess.check_output(["hostname"], text=True).strip()
 
 TIER_SEVERITY = {
@@ -242,15 +241,14 @@ def main():
     check_unknown_containers(services, containers)
     check_unknown_systemd(services)
 
-    # Summary to stdout (for cron email)
+    # Log issues to syslog (alerts already sent via willflix-notify;
+    # stdout is intentionally silent to avoid cron email spam).
     if issues:
-        print(f"willflix-check-services: {len(issues)} issue(s) found")
-        for issue in issues:
-            print(f"  - {issue}")
-
-    # Touch freshness stamp
-    MONITOR_STAMP.parent.mkdir(parents=True, exist_ok=True)
-    MONITOR_STAMP.touch()
+        subprocess.run(
+            ["logger", "-t", "willflix-check-services",
+             f"{len(issues)} issue(s): " + ", ".join(issues)],
+            check=False,
+        )
 
 
 if __name__ == "__main__":

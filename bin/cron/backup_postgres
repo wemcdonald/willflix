@@ -18,8 +18,6 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 NOTIFY="$(cd "$SCRIPT_DIR/.." && pwd)/willflix-notify"
-MONITOR_STAMP="/var/tmp/willflix-monitors/backup_postgres"
-
 CONTAINER="config-postgres-1"
 DB_USER="will"
 BACKUP_DIR="/Volumes/Bonus1/postgres-backup"
@@ -85,7 +83,3 @@ find "$BACKUP_DIR" -maxdepth 1 -type d -name '20*' -mtime +"$RETENTION_DAYS" -ex
 
 # Clean up old flat files from previous format (one-time migration)
 find "$BACKUP_DIR" -maxdepth 1 -name '*.sql.gz' -delete 2>/dev/null || true
-
-# Touch freshness stamp
-install -d -m 1777 /var/tmp/willflix-monitors
-touch "$MONITOR_STAMP"

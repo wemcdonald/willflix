@@ -76,24 +76,11 @@ if [[ -f "$HOME_CONFIG" ]]; then
 fi
 
 DEDUP_DIR="${DEDUP_DIR:-/var/tmp/willflix-notify}"
-DEDUP_RESET_HOUR="${DEDUP_RESET_HOUR:-8}"  # Suppress repeats until this hour (0-23)
-DEDUP_MAX_WINDOW="${DEDUP_MAX_WINDOW:-86400}"  # Safety cap: 24 hours
+DEDUP_WINDOW_CRITICAL="${DEDUP_WINDOW_CRITICAL:-1h}"
+DEDUP_WINDOW_WARNING="${DEDUP_WINDOW_WARNING:-4h}"
+DEDUP_WINDOW_INFO="${DEDUP_WINDOW_INFO:-24h}"
 
 # --- Dedup check ---
-
-# Returns the epoch timestamp of the most recent occurrence of DEDUP_RESET_HOUR.
-# If it's currently past that hour today, returns today's reset time.
-# If it's before that hour, returns yesterday's reset time.
-last_reset_epoch() {
-    local now today_reset
-    now=$(date +%s)
-    today_reset=$(date -d "today ${DEDUP_RESET_HOUR}:00:00" +%s)
-    if [[ "$now" -ge "$today_reset" ]]; then
-        echo "$today_reset"
-    else
-        echo $(( today_reset - 86400 ))
-    fi
-}
 
 # Convert duration string (e.g. "3d", "12h", "1w") to seconds.
 parse_duration() {
@@ -109,29 +96,33 @@ parse_duration() {
     esac
 }
 
+# Get the debounce window for the current alert.
+# --dedup-window override takes precedence, then severity default.
+get_dedup_window() {
+    if [[ -n "$DEDUP_WINDOW_OVERRIDE" ]]; then
+        parse_duration "$DEDUP_WINDOW_OVERRIDE"
+        return
+    fi
+    case "$SEVERITY" in
+        CRITICAL) parse_duration "$DEDUP_WINDOW_CRITICAL" ;;
+        WARNING)  parse_duration "$DEDUP_WINDOW_WARNING" ;;
+        INFO)     parse_duration "$DEDUP_WINDOW_INFO" ;;
+        META)     parse_duration "$DEDUP_WINDOW_CRITICAL" ;;
+        *)        echo 3600 ;;  # fallback: 1 hour
+    esac
+}
+
 is_deduped() {
     [[ "$TEST_MODE" == "true" ]] && return 1  # --test bypasses dedup
 
     local keyfile="${DEDUP_DIR}/${KEY}"
     if [[ -f "$keyfile" ]]; then
-        local sent_at age
+        local sent_at age window
         sent_at=$(stat -c %Y "$keyfile")
         age=$(( $(date +%s) - sent_at ))
-
-        if [[ -n "$DEDUP_WINDOW_OVERRIDE" ]]; then
-            # Fixed window: suppress if sent less than N seconds ago
-            local window
-            window=$(parse_duration "$DEDUP_WINDOW_OVERRIDE")
-            if [[ "$age" -lt "$window" ]]; then
-                return 0  # suppress
-            fi
-        else
-            # Default: daily reset boundary
-            local reset_boundary
-            reset_boundary=$(last_reset_epoch)
-            if [[ "$sent_at" -ge "$reset_boundary" && "$age" -lt "$DEDUP_MAX_WINDOW" ]]; then
-                return 0  # suppress
-            fi
+        window=$(get_dedup_window)
+        if [[ "$age" -lt "$window" ]]; then
+            return 0  # suppress
         fi
     fi
     return 1  # not deduped, send it

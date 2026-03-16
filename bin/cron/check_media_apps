@@ -400,14 +400,7 @@ def main():
             severity = "CRITICAL"
 
         notify.send(severity, "media-app-health", subject, body)
-        # Print to stdout so cron email includes details
-        print(f"{subject}\n\n{body}")
         _log_issues(issues)
-
-    # Touch freshness stamp
-    stamp = Path("/var/tmp/willflix-monitors/check_media_apps")
-    stamp.parent.mkdir(parents=True, exist_ok=True)
-    stamp.touch()
 
 
 if __name__ == "__main__":

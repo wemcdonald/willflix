@@ -1,0 +1,8 @@
+/willflix/log/*.log {
+    weekly
+    rotate 4
+    compress
+    delaycompress
+    missingok
+    notifempty
+}

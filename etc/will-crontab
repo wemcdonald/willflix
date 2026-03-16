@@ -1,11 +1,8 @@
-# Will's crontab backup jobs — add stamp touches for freshness monitoring.
-# Apply with: crontab -e
-#
+# Will's user crontab — apply with: crontab -e
 
-0 0 * * * /usr/local/bin/cronic /willflix/bin/cron/backup_google_photos && touch /var/tmp/willflix-monitors/backup_google_photos
-#30 0 * * * /usr/local/bin/cronic /willflix/bin/cron/backup_gmail && touch /var/tmp/willflix-monitors/backup_gmail
-#45 0 * * * /usr/local/bin/cronic /willflix/bin/cron/backup_home && touch /var/tmp/willflix-monitors/backup_home
-0 * * * * /home/will/bin/cronic /home/will/code/spotify-reverse-playlist/spotify-reverse-playlist.js 2URk2BeRnVU2GSNtxCgKTt 57ePYbfFPAvcWNIqkpO5Lu
+0 0 * * * /willflix/bin/willflix-cron /willflix/bin/cron/backup_google_photos
+#30 0 * * * /willflix/bin/willflix-cron /willflix/bin/cron/backup_gmail
+#45 0 * * * /willflix/bin/willflix-cron /willflix/bin/cron/backup_home
+0 * * * * /willflix/bin/willflix-cron /home/will/code/spotify-reverse-playlist/spotify-reverse-playlist.js
 
-#0 3 * * 0 /home/will/bin/cronic /home/will/bin/update_code_archives
-
+#0 3 * * 0 /willflix/bin/willflix-cron /home/will/bin/update_code_archives
