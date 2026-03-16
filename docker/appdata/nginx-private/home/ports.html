@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Willflix — Service Ports</title>
+    <style>
+        :root { --bg: #1a1a2e; --surface: #16213e; --border: #0f3460; --text: #e0e0e0; --dim: #888; --accent: #e94560; --link: #53a8b6; --green: #4ecca3; --yellow: #f0c040; }
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: 'SF Mono', 'Fira Code', 'Consolas', monospace; background: var(--bg); color: var(--text); padding: 2rem; font-size: 14px; }
+        h1 { color: var(--accent); margin-bottom: 0.25rem; font-size: 1.4rem; }
+        .subtitle { color: var(--dim); margin-bottom: 2rem; font-size: 0.85rem; }
+        h2 { color: var(--green); margin: 2rem 0 0.75rem; font-size: 1.1rem; border-bottom: 1px solid var(--border); padding-bottom: 0.25rem; }
+        table { width: 100%; border-collapse: collapse; margin-bottom: 1rem; }
+        th { text-align: left; padding: 0.5rem 0.75rem; color: var(--dim); font-weight: normal; font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.05em; border-bottom: 2px solid var(--border); }
+        td { padding: 0.4rem 0.75rem; border-bottom: 1px solid var(--border); }
+        tr:hover td { background: var(--surface); }
+        .port { color: var(--yellow); font-weight: bold; }
+        .subdomain a { color: var(--link); text-decoration: none; }
+        .subdomain a:hover { text-decoration: underline; }
+        .tag { display: inline-block; padding: 0.1rem 0.4rem; border-radius: 3px; font-size: 0.7rem; font-weight: bold; }
+        .tag-public { background: #1b4332; color: var(--green); }
+        .tag-tailscale { background: #1a3a5c; color: #7ec8e3; }
+        .tag-internal { background: #3d2c2c; color: #c87878; }
+        .tag-host { background: #3d3520; color: var(--yellow); }
+        .notes { color: var(--dim); font-size: 0.8rem; }
+        footer { margin-top: 3rem; color: var(--dim); font-size: 0.75rem; border-top: 1px solid var(--border); padding-top: 1rem; }
+        footer code { color: var(--yellow); }
+    </style>
+</head>
+<body>
+
+<h1>willflix.org — Service Port Map</h1>
+<p class="subtitle">All services on lafayette · Tailscale: willflix.tail88dba.ts.net · Updated 2026-02-06</p>
+
+<h2>Web Services (Traefik + Auth)</h2>
+<table>
+    <thead><tr><th>Port</th><th>Service</th><th>Public Subdomain</th><th>Access</th><th>Notes</th></tr></thead>
+    <tbody>
+        <tr><td class="port">80</td><td>Traefik</td><td>—</td><td><span class="tag tag-public">public</span></td><td class="notes">HTTP → HTTPS redirect</td></tr>
+        <tr><td class="port">443</td><td>Traefik</td><td>—</td><td><span class="tag tag-public">public</span></td><td class="notes">HTTPS reverse proxy for all services below</td></tr>
+        <tr><td class="port">9000</td><td>Authentik</td><td class="subdomain"><a href="https://auth.willflix.org">auth.willflix.org</a></td><td><span class="tag tag-public">public</span></td><td class="notes">SSO / identity provider</td></tr>
+        <tr><td class="port">9443</td><td>Authentik</td><td>—</td><td><span class="tag tag-tailscale">tailscale</span></td><td class="notes">HTTPS admin</td></tr>
+    </tbody>
+</table>
+
+<h2>Media — Streaming & Management</h2>
+<table>
+    <thead><tr><th>Port</th><th>Service</th><th>Public Subdomain</th><th>Access</th><th>Notes</th></tr></thead>
+    <tbody>
+        <tr><td class="port">32400</td><td>Plex</td><td>—</td><td><span class="tag tag-host">host network</span></td><td class="notes">Media streaming (app.plex.tv handles routing)</td></tr>
+        <tr><td class="port">8989</td><td>Sonarr</td><td class="subdomain"><a href="https://sonarr.willflix.org">sonarr.willflix.org</a></td><td><span class="tag tag-public">public</span></td><td class="notes">TV show management</td></tr>
+        <tr><td class="port">7878</td><td>Radarr</td><td class="subdomain"><a href="https://radarr.willflix.org">radarr.willflix.org</a></td><td><span class="tag tag-public">public</span></td><td class="notes">Movie management</td></tr>
+        <tr><td class="port">8686</td><td>Lidarr</td><td class="subdomain"><a href="https://lidarr.willflix.org">lidarr.willflix.org</a></td><td><span class="tag tag-public">public</span></td><td class="notes">Music management</td></tr>
+        <tr><td class="port">9696</td><td>Prowlarr</td><td class="subdomain"><a href="https://prowlarr.willflix.org">prowlarr.willflix.org</a></td><td><span class="tag tag-public">public</span></td><td class="notes">Indexer management</td></tr>
+        <tr><td class="port">5055</td><td>Overseerr</td><td class="subdomain"><a href="https://requests.willflix.org">requests.willflix.org</a></td><td><span class="tag tag-public">public</span></td><td class="notes">Media request portal</td></tr>
+        <tr><td class="port">48181</td><td>Tautulli</td><td class="subdomain"><a href="https://tautulli.willflix.org">tautulli.willflix.org</a></td><td><span class="tag tag-public">public</span></td><td class="notes">Plex analytics</td></tr>
+        <tr><td class="port">13378</td><td>Audiobookshelf</td><td class="subdomain"><a href="https://audiobooks.willflix.org">audiobooks.willflix.org</a></td><td><span class="tag tag-public">public</span></td><td class="notes">Audiobook streaming</td></tr>
+    </tbody>
+</table>
+
+<h2>Downloads</h2>
+<table>
+    <thead><tr><th>Port</th><th>Service</th><th>Public Subdomain</th><th>Access</th><th>Notes</th></tr></thead>
+    <tbody>
+        <tr><td class="port">8967</td><td>qBittorrent (via VPN)</td><td class="subdomain"><a href="https://bittorrent.willflix.org">bittorrent.willflix.org</a></td><td><span class="tag tag-public">public</span></td><td class="notes">Torrent client; traffic routes through gluetun</td></tr>
+        <tr><td class="port">6881</td><td>VPN (gluetun)</td><td>—</td><td><span class="tag tag-tailscale">tailscale</span></td><td class="notes">BitTorrent peer port</td></tr>
+        <tr><td class="port">8388</td><td>VPN (gluetun)</td><td>—</td><td><span class="tag tag-tailscale">tailscale</span></td><td class="notes">Shadowsocks proxy</td></tr>
+        <tr><td class="port">6789</td><td>NZBGet</td><td class="subdomain"><a href="https://nzbget.willflix.org">nzbget.willflix.org</a></td><td><span class="tag tag-public">public</span></td><td class="notes">Usenet downloader</td></tr>
+        <tr><td class="port">5800</td><td>JDownloader</td><td class="subdomain"><a href="https://jdownloader.willflix.org">jdownloader.willflix.org</a></td><td><span class="tag tag-public">public</span></td><td class="notes">DDL downloader (web VNC)</td></tr>
+        <tr><td class="port">8191</td><td>ByParr</td><td>—</td><td><span class="tag tag-internal">internal</span></td><td class="notes">Cloudflare bypass for Prowlarr</td></tr>
+    </tbody>
+</table>
+
+<h2>Books</h2>
+<table>
+    <thead><tr><th>Port</th><th>Service</th><th>Public Subdomain</th><th>Access</th><th>Notes</th></tr></thead>
+    <tbody>
+        <tr><td class="port">58080</td><td>Calibre-Web Automated</td><td class="subdomain"><a href="https://books.willflix.org">books.willflix.org</a></td><td><span class="tag tag-public">public</span></td><td class="notes">Book library & reading</td></tr>
+        <tr><td class="port">8084</td><td>Shelfmark</td><td class="subdomain"><a href="https://bookstore.willflix.org">bookstore.willflix.org</a></td><td><span class="tag tag-public">public</span></td><td class="notes">Book search & auto-download</td></tr>
+        <tr><td class="port">5299</td><td>LazyLibrarian</td><td class="subdomain"><a href="https://librarian.willflix.org">librarian.willflix.org</a></td><td><span class="tag tag-public">public</span></td><td class="notes">Book metadata & management</td></tr>
+    </tbody>
+</table>
+
+<h2>Apps & Tools</h2>
+<table>
+    <thead><tr><th>Port</th><th>Service</th><th>Public Subdomain</th><th>Access</th><th>Notes</th></tr></thead>
+    <tbody>
+        <tr><td class="port">8020</td><td>Nextcloud</td><td class="subdomain"><a href="https://willflix.org">willflix.org</a></td><td><span class="tag tag-public">public</span></td><td class="notes">Cloud storage (OIDC auth)</td></tr>
+        <tr><td class="port">3923</td><td>Copyparty</td><td class="subdomain"><a href="https://files.willflix.org">files.willflix.org</a></td><td><span class="tag tag-public">public</span></td><td class="notes">File sharing</td></tr>
+        <tr><td class="port">8085</td><td>Grocerybot</td><td class="subdomain"><a href="https://groceries.willflix.org">groceries.willflix.org</a></td><td><span class="tag tag-public">public</span></td><td class="notes">Grocery list</td></tr>
+        <tr><td class="port">7575</td><td>Homarr</td><td class="subdomain"><a href="https://admin.willflix.org">admin.willflix.org</a></td><td><span class="tag tag-public">public</span></td><td class="notes">Dashboard / homepage</td></tr>
+    </tbody>
+</table>
+
+<h2>Development & AI</h2>
+<table>
+    <thead><tr><th>Port</th><th>Service</th><th>Public Subdomain</th><th>Access</th><th>Notes</th></tr></thead>
+    <tbody>
+        <tr><td class="port">3456</td><td>OpenCode (serve)</td><td>—</td><td><span class="tag tag-tailscale">tailscale</span></td><td class="notes">Headless API server (127.0.0.1 only, Tailscale proxied)</td></tr>
+        <tr><td class="port">4096</td><td>OpenCode (web)</td><td class="subdomain"><a href="https://code.willflix.org">code.willflix.org</a></td><td><span class="tag tag-public">public</span></td><td class="notes">Web UI (Traefik + Authentik)</td></tr>
+        <tr><td class="port">18789</td><td>OpenClaw Gateway</td><td class="subdomain"><a href="https://claw.willflix.org">claw.willflix.org</a></td><td><span class="tag tag-public">public</span></td><td class="notes">OpenClaw MCP gateway</td></tr>
+        <tr><td class="port">18790</td><td>OpenClaw Gateway</td><td>—</td><td><span class="tag tag-tailscale">tailscale</span></td><td class="notes">OpenClaw secondary port</td></tr>
+        <tr><td class="port">3000</td><td>Guildmaster</td><td class="subdomain"><a href="https://guildmaster.willflix.org">guildmaster.willflix.org</a></td><td><span class="tag tag-public">public</span></td><td class="notes">API server</td></tr>
+        <tr><td class="port">3500</td><td>Health Server</td><td class="subdomain"><a href="https://healthdata.willflix.org">healthdata.willflix.org</a></td><td><span class="tag tag-public">public</span></td><td class="notes">HealthKit data API (app-level Bearer auth)</td></tr>
+        <tr><td class="port">5173</td><td>Guildmaster</td><td>—</td><td><span class="tag tag-tailscale">tailscale</span></td><td class="notes">Dev/Vite server</td></tr>
+    </tbody>
+</table>
+
+<h2>Infrastructure</h2>
+<table>
+    <thead><tr><th>Port</th><th>Service</th><th>Public Subdomain</th><th>Access</th><th>Notes</th></tr></thead>
+    <tbody>
+        <tr><td class="port">22</td><td>SSH</td><td>—</td><td><span class="tag tag-tailscale">tailscale</span></td><td class="notes">Host SSH</td></tr>
+        <tr><td class="port">25</td><td>SMTP Relay</td><td>—</td><td><span class="tag tag-internal">internal</span></td><td class="notes">Outbound mail relay</td></tr>
+        <tr><td class="port">139/445</td><td>Samba</td><td>—</td><td><span class="tag tag-tailscale">tailscale</span></td><td class="notes">SMB file shares</td></tr>
+        <tr><td class="port">5432</td><td>PostgreSQL</td><td>—</td><td><span class="tag tag-tailscale">tailscale</span></td><td class="notes">Shared database</td></tr>
+        <tr><td class="port">6379</td><td>Redis</td><td>—</td><td><span class="tag tag-tailscale">tailscale</span></td><td class="notes">Shared cache</td></tr>
+        <tr><td class="port">48080</td><td>Adminer</td><td>—</td><td><span class="tag tag-tailscale">tailscale</span></td><td class="notes">Database web UI</td></tr>
+        <tr><td class="port">8083</td><td>Webhook Handler</td><td>—</td><td><span class="tag tag-internal">internal</span></td><td class="notes">Authentik webhook receiver</td></tr>
+        <tr><td class="port">2049</td><td>NFS</td><td>—</td><td><span class="tag tag-tailscale">tailscale</span></td><td class="notes">NFS file shares</td></tr>
+        <tr><td class="port">5901</td><td>VNC (TigerVNC)</td><td>—</td><td><span class="tag tag-tailscale">tailscale</span></td><td class="notes">Host desktop remote access</td></tr>
+        <tr><td class="port">3389</td><td>XRDP</td><td>—</td><td><span class="tag tag-tailscale">tailscale</span></td><td class="notes">RDP remote desktop</td></tr>
+    </tbody>
+</table>
+
+<h2>Traefik-Only (no exposed port)</h2>
+<table>
+    <thead><tr><th>Service</th><th>Public Subdomain</th><th>Notes</th></tr></thead>
+    <tbody>
+        <tr><td>nginx-public</td><td class="subdomain"><a href="https://public.willflix.org">public.willflix.org</a></td><td class="notes">Public static pages</td></tr>
+        <tr><td>nginx-private</td><td class="subdomain"><a href="https://private.willflix.org">private.willflix.org</a></td><td class="notes">Private static pages (this page)</td></tr>
+        <tr><td>Healthbot</td><td class="subdomain"><a href="https://health.willflix.org">health.willflix.org</a></td><td class="notes">Service health dashboard</td></tr>
+        <tr><td>Gastown</td><td class="subdomain"><a href="https://gt.willflix.org">gt.willflix.org</a></td><td class="notes">Custom app</td></tr>
+        <tr><td>Whoami</td><td class="subdomain"><a href="https://whoami.willflix.org">whoami.willflix.org</a></td><td class="notes">Traefik test endpoint</td></tr>
+    </tbody>
+</table>
+
+<footer>
+    <p>This page lives at <code>/docker/appdata/nginx-private/home/ports.html</code> and is served at <a href="https://private.willflix.org/home/ports.html" style="color:var(--link)">private.willflix.org/home/ports.html</a>.</p>
+    <p>When adding or removing services, update this file. See the <code>add-docker-service</code> skill for the full checklist.</p>
+</footer>
+
+</body>
+</html>

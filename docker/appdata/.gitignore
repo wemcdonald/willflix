@@ -93,6 +93,7 @@ opencode/bun.lock
 opencode/push-tokens.json
 opencode/*.swp
 opencode/*.swo
+opencode/superpowers/
 
 # OpenClaw noise
 openclaw/workspace/node_modules/
