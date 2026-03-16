@@ -41,7 +41,8 @@ This is the ops repo for a personal headless Ubuntu server (hostname: `lafayette
 | `/willflix/docker/images/` | Custom-built Docker images (Dockerfile + source) |
 | `/willflix/docker/appdata/` | Container volumes (gitignored) |
 | `/willflix/secrets/` | git-crypt encrypted secrets |
-| `/willflix/bin/` | Admin scripts, cron scripts (`bin/cron/`) |
+| `/willflix/bin/` | Admin scripts, cron scripts (`bin/cron/`), `willflix-cron`, `willflix-notify` |
+| `/willflix/log/` | Cron job output logs (written by `willflix-cron`, logrotated weekly) |
 | `/willflix/etc/` | System configs — **source of truth** for `/etc/` files. See `etc/AGENTS.md`. |
 | `/willflix/docs/` | Documentation, postmortems, plans |
 | `/docker` | Compat symlink → `/willflix/docker` |
@@ -51,10 +52,30 @@ This is the ops repo for a personal headless Ubuntu server (hostname: `lafayette
 
 ## Mail / Alerting
 
-- **Pipeline**: `/usr/sbin/sendmail` → `sendmail-system` script → curl SMTP → `smtp-relay` container → Gmail
+- **Email pipeline**: `/usr/sbin/sendmail` → `sendmail-system` script → curl SMTP → `smtp-relay` container → Gmail
 - **sendmail-system**: `/willflix/bin/sendmail-system` — maps local users to `wemcdonald@gmail.com`
-- **Root crontab**: `MAILTO=will` (sendmail delivers cron errors to Gmail)
 - **Known issue**: `/usr/bin/mail` command doesn't work; always use `sendmail` or `sendmail -t`
+
+### willflix-notify
+
+Multi-channel alerting with severity routing and debounce.
+
+- **Usage**: `willflix-notify --severity CRITICAL --key "mergerfs-degraded" --subject "..." --body "..."`
+- **Severity routing**: INFO → email only, WARNING → email + Pushover, CRITICAL → email + Pushover (emergency)
+- **Debounce**: Per-key, severity-based — CRITICAL=1h, WARNING=4h, INFO=24h. Override with `--dedup-window 3h`.
+- **Config**: `/willflix/etc/willflix-notify.config` (credentials in `~/.config/willflix-notify/config`)
+- **Dedup state**: `/var/tmp/willflix-notify/` (file mtime per key)
+
+### willflix-cron
+
+Cron job wrapper — all crontab entries use this instead of running scripts directly.
+
+- **Usage**: `*/15 * * * * /willflix/bin/willflix-cron check_mergerfs_health`
+- **Logs**: Captures all stdout/stderr to `/willflix/log/<script>.log`
+- **Freshness stamps**: Touches `/var/tmp/willflix-monitors/<script>` on success
+- **Cron emails**: Only surfaces output to cron (triggering MAILTO) if script exits non-zero
+- **Exit code contract**: Scripts exit 0 = "I ran successfully" (even if subject is unhealthy, alerts go via willflix-notify). Non-zero = "the script itself broke".
+- **Root crontab**: `MAILTO=will`, source of truth at `/willflix/etc/root-crontab`
 
 ## Common Operations
 
@@ -85,11 +106,15 @@ sudo snapraid fix -d dN        # Reconstruct a disk from parity
 ### Monitoring
 ```bash
 # Test that alerting works end-to-end
-echo "Test" | /usr/sbin/sendmail wemcdonald@gmail.com
+willflix-notify --test --subject "Test all channels"
 # Check mergerfs pool health manually
 sudo ~/bin/cron/check_mergerfs_health
 # Check snapraid freshness
 sudo ~/bin/cron/check_snapraid_freshness
+# View cron job logs
+cat /willflix/log/<script-name>.log
+# Check freshness stamps
+ls -la /var/tmp/willflix-monitors/
 ```
 
 ## Known Issues / Watch Items

@@ -15,6 +15,7 @@ Files here are the **canonical versions** of system config files. They are maint
 | `willflix-notify.config` | Read by `bin/willflix-notify` | Direct (same path) |
 | `systemd/` | `/etc/systemd/system/` | `rebuild-lafayette` |
 | `backup.d/` | Backup job configs | Read by backup scripts |
+| `logrotate.d/willflix` | `/etc/logrotate.d/willflix` | Symlink (created manually) |
 
 ## Editing Rules
 
