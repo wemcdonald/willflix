@@ -17,6 +17,9 @@ MAILTO=will
 # Service health checks (every 15 min)
 */15 * * * * /willflix/bin/willflix-cron willflix-check-services
 
+# Restart authentik containers stuck unhealthy after postgres restarts (every 5 min)
+*/5 * * * * /willflix/bin/willflix-cron restart_unhealthy_authentik
+
 # Backup freshness (daily after heartbeat)
 15 9 * * * /willflix/bin/willflix-cron willflix-check-backups
 

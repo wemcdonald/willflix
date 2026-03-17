@@ -1,0 +1,36 @@
+#!/bin/bash
+# restart_unhealthy_authentik — restart authentik containers stuck in unhealthy state.
+#
+# The authentik worker (Celery) doesn't recover from postgres restarts — it keeps
+# running with a stale DB connection and never updates its heartbeat. Docker won't
+# auto-restart it because the process is still alive.
+#
+# This script finds unhealthy authentik containers and restarts them.
+# Run every 5 minutes via cron.
+
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+NOTIFY="$(cd "$SCRIPT_DIR/.." && pwd)/willflix-notify"
+
+# Find unhealthy authentik containers
+unhealthy=$(docker ps --filter "name=authentik" --filter "health=unhealthy" --format '{{.Names}}' 2>/dev/null)
+
+if [[ -z "$unhealthy" ]]; then
+    exit 0
+fi
+
+for container in $unhealthy; do
+    echo "Restarting unhealthy container: $container"
+    docker restart "$container"
+
+    "$NOTIFY" --severity WARNING --key "authentik-unhealthy-${container}" \
+        --subject "Restarted unhealthy $container on $(hostname)" \
+        --body "Container $container was in unhealthy state and was automatically restarted.
+
+This typically happens when postgres restarts and the worker's DB connection goes stale.
+
+Check:
+  docker ps | grep authentik
+  docker logs $container --tail 20"
+done
