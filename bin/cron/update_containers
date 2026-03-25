@@ -123,6 +123,24 @@ def get_services() -> list[str]:
     return [s for s in result.stdout.strip().splitlines() if s]
 
 
+def get_network_dependents() -> dict[str, list[str]]:
+    """Return {service: [dependents]} for network_mode: "service:X" relationships."""
+    result = compose("config", "--format", "json", capture=True)
+    if result.returncode != 0:
+        return {}
+    try:
+        data = json.loads(result.stdout)
+    except json.JSONDecodeError:
+        return {}
+    deps: dict[str, list[str]] = {}
+    for svc, cfg in data.get("services", {}).items():
+        nm = cfg.get("network_mode", "")
+        if nm.startswith("service:"):
+            parent = nm.split(":", 1)[1]
+            deps.setdefault(parent, []).append(svc)
+    return deps
+
+
 def log_maintenance(entries: list[str]):
     MAINTENANCE_LOG.parent.mkdir(parents=True, exist_ok=True)
     date = datetime.now().strftime("%Y-%m-%d")
@@ -151,6 +169,9 @@ def main():
 
     # Map service → image name so we can compare pulled vs running IDs
     svc_images = get_compose_service_images()
+
+    # Track network_mode dependencies (e.g. qbittorrent → vpn)
+    net_deps = get_network_dependents()
 
     # Decide Plex handling
     plex_skip_reason = None
@@ -201,6 +222,16 @@ def main():
             log.warning(f"  {svc} failed: {result.stderr.strip()[:200]}")
         else:
             updated.append(svc)
+            # Recreate containers that share this service's network namespace,
+            # since their network_mode reference breaks when the parent is recreated.
+            for dep in net_deps.get(svc, []):
+                log.info(f"  Restarting {dep} (network_mode: service:{svc})...")
+                remove_container(dep)
+                dep_result = compose("up", "-d", "--no-deps", "--force-recreate", dep, capture=True)
+                if dep_result.returncode != 0:
+                    log.warning(f"  {dep} failed: {dep_result.stderr.strip()[:200]}")
+                else:
+                    updated.append(dep)
 
     if not args.dry_run:
         # Remove containers for services that no longer exist in compose.yml
