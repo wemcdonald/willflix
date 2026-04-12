@@ -440,8 +440,7 @@ def main():
         # Attempt LLM remediation before alerting (low risk — suppress if fixed)
         remediate = None
         try:
-            import subprocess as _sp
-            remediate = _sp.run(
+            remediate = subprocess.run(
                 ["/willflix/bin/willflix-remediate",
                  "--script", "check_media_apps",
                  "--findings", body],
@@ -453,6 +452,7 @@ def main():
         if remediate is not None and remediate.returncode == 0:
             # Fixed and verified — suppress alert
             _log_issues(issues)
+            log.info("check_media_apps: auto-remediated by LLM — alert suppressed")
             return
 
         # Append LLM output to body if it added useful context
