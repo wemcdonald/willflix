@@ -33,6 +33,41 @@ Ops repo for a personal headless media server (hostname: lafayette). Contains mo
 - Always include diagnostic commands in the `--body` so the user knows what to run
 - Test delivery: `willflix-notify --test --subject "Test"`
 
+### LLM Auto-Remediation
+
+- `willflix-remediate` — calls Claude with a constrained allowedTools settings file to attempt fixes or diagnosis before alerts fire
+- Config: `etc/willflix-remediation.conf` (per-script: risk level, goal, allowed tools)
+- Logs: `/willflix/log/willflix-remediate.log`
+- Claude binary: `/home/will/.local/bin/claude` (NOT the shell alias — normal permissions apply)
+
+**Risk levels:**
+- `low` — fix attempted; alert suppressed if fix verified
+- `medium` — fix attempted; alert always sent with fix status appended
+- `high` — diagnosis only; diagnosis appended to alert; no changes made
+
+**Usage from Python scripts (low risk example):**
+```python
+remediate = subprocess.run(
+    ["/willflix/bin/willflix-remediate", "--script", SCRIPT_NAME, "--findings", body],
+    capture_output=True, text=True, timeout=180,
+)
+if remediate is not None and remediate.returncode == 0:
+    return  # fixed and verified — suppress alert
+# append remediate.stdout to alert body if non-empty
+```
+
+**Usage from bash scripts (high risk):**
+```bash
+LLM_DIAGNOSIS=""
+if [[ -x /willflix/bin/willflix-remediate ]]; then
+    LLM_DIAGNOSIS=$(timeout 150 /willflix/bin/willflix-remediate \
+        --script <name> --findings "$ERRORS" 2>/dev/null || true)
+fi
+# append LLM_DIAGNOSIS to alert body
+```
+
+**Always** wrap in `|| true` / try-except — remediation must never prevent an alert from firing.
+
 ### Documentation
 - Postmortems and PRDs go in `docs/`
 - Runbooks (step-by-step procedures) go in `docs/runbooks/`
