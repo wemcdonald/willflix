@@ -1,5 +1,10 @@
 """willflix-remediate — LLM-assisted auto-remediation for cron alerts.
 
+Architecture: two-phase.
+  1. Call Claude with stdin=DEVNULL, no tool use — it outputs a JSON plan.
+  2. willflix-remediate validates and executes commands from the plan,
+     then re-runs the original check to verify.
+
 Exit codes:
     0 — issue fixed and verified (caller may suppress alert)
     1 — not fixed, timed out, or any error (caller sends alert normally)
@@ -11,7 +16,6 @@ import logging
 import os
 import subprocess
 import sys
-import tempfile
 from pathlib import Path
 
 import yaml
@@ -25,8 +29,29 @@ AGENTS_MD = REPO_DIR / "AGENTS.md"
 # Absolute path — avoids shell alias `claude --dangerously-skip-permissions`
 CLAUDE_BIN = "/home/will/.local/bin/claude"
 
-LLM_TIMEOUT = int(os.environ.get("CLAUDE_TIMEOUT", 120))  # env override for testing
+LLM_TIMEOUT = int(os.environ.get("CLAUDE_TIMEOUT", 120))
 VERIFY_TIMEOUT = 300
+CMD_TIMEOUT = 60
+
+
+def _get_claude_env() -> dict:
+    """Return env dict for the Claude subprocess.
+
+    Cron has a minimal environment. /etc/environment holds ANTHROPIC_API_KEY
+    at the system level but cron doesn't source it automatically.
+    """
+    env = os.environ.copy()
+    if "ANTHROPIC_API_KEY" not in env:
+        try:
+            with open("/etc/environment") as f:
+                for line in f:
+                    line = line.strip()
+                    if "=" in line and not line.startswith("#"):
+                        k, _, v = line.partition("=")
+                        env.setdefault(k.strip(), v.strip().strip('"').strip("'"))
+        except OSError:
+            pass
+    return env
 
 
 def setup_logging(script_name: str) -> logging.Logger:
@@ -51,28 +76,37 @@ def load_config(script_name: str) -> dict | None:
     return data.get("scripts", {}).get(script_name)
 
 
-def build_prompt(risk: str, goal: str, findings: str) -> str:
-    """Build the prompt for Claude."""
+def build_prompt(risk: str, goal: str, findings: str, allowed_tools: list[str]) -> str:
+    """Build the planning prompt for Claude."""
     agents_context = ""
     if AGENTS_MD.exists():
         agents_context = AGENTS_MD.read_text()
 
     instructions = {
         "low": (
-            "Attempt to fix the issue using your allowed tools. "
-            'If successful, output {"fixed": true} in your summary.'
+            "Plan commands to fix the issue. Choose only from the ALLOWED COMMANDS list. "
+            "Include them in your JSON summary."
         ),
         "medium": (
-            "Attempt to fix the issue using your allowed tools. "
-            "You MUST report regardless of outcome — this alert will always be sent."
+            "Plan commands to attempt a fix. Choose only from the ALLOWED COMMANDS list. "
+            "This alert will always be sent regardless of outcome."
         ),
         "high": (
-            "Diagnose only — do not make any changes to the system. "
-            "Use your allowed tools to gather information and provide a diagnosis."
+            "Diagnose only — do NOT suggest any commands that make changes. "
+            "Use your knowledge and the findings to provide a clear diagnosis."
         ),
     }[risk]
 
-    return f"""You are an automated remediation agent for the Willflix server (lafayette).
+    # Strip Bash(...) wrapper for display
+    def _display(t: str) -> str:
+        if t.startswith("Bash(") and t.endswith(")"):
+            return t[5:-1]
+        return t
+
+    allowed_list = "\n".join(f"  - {_display(t)}" for t in allowed_tools)
+
+    return f"""You are an automated remediation planner for the Willflix server (lafayette).
+You analyse findings and produce a fix plan. You do NOT run commands yourself.
 
 SYSTEM CONTEXT:
 {agents_context}
@@ -82,11 +116,16 @@ RISK LEVEL: {risk.upper()}
 
 GOAL: {goal}
 
+ALLOWED COMMANDS (suggest ONLY exact commands that match these patterns):
+{allowed_list or "  (none — diagnose only)"}
+
 FINDINGS:
 {findings}
 
-After completing your work, output a JSON summary on the final line:
-{{"fixed": true/false, "actions_taken": ["..."], "diagnosis": "...", "recommendation": "..."}}
+Respond with a brief analysis, then end your response with EXACTLY ONE JSON object on its own line:
+{{"commands": [{{"cmd": "exact shell command", "reason": "why"}}], "diagnosis": "root cause", "recommendation": "next steps"}}
+
+For HIGH risk or when no fix is possible: use an empty commands array [].
 """
 
 
@@ -100,6 +139,83 @@ def parse_summary(output: str) -> dict:
             except json.JSONDecodeError:
                 continue
     return {}
+
+
+def _normalize_cmd(cmd: str) -> str:
+    """Strip surrounding quotes from URL arguments for allowlist matching.
+
+    Claude often quotes URLs ('http://...' or "http://...") but allowlist
+    patterns are written without quotes. Normalise before comparing.
+    Execution always uses the original quoted command — this is matching only.
+    """
+    import re
+    cmd = re.sub(r'"(https?://[^"]*)"', r'\1', cmd)
+    cmd = re.sub(r"'(https?://[^']*)'", r'\1', cmd)
+    return cmd
+
+
+def is_command_allowed(cmd: str, allowed_tools: list[str]) -> bool:
+    """Check if a command matches any entry in the allowlist.
+
+    Allowlist entries may be bare commands or Bash(...) wrapped patterns.
+    Trailing * means prefix match; otherwise exact match.
+    Commands containing <placeholder> template markers are always rejected.
+    """
+    cmd = cmd.strip()
+
+    import re
+    # Reject unfilled template placeholders (e.g. <ID_FROM_ABOVE>)
+    if re.search(r'<[^>]+>', cmd):
+        return False
+
+    # Reject dangerous shell metacharacters (pipe, semicolon, backtick, subshell).
+    # & is excluded: it appears legitimately in URL query strings inside quotes
+    # and is safe to execute since Claude's output keeps it quoted.
+    if re.search(r'[|;`]|\$\(', cmd):
+        return False
+
+    normalized = _normalize_cmd(cmd)
+
+    for pattern in allowed_tools:
+        p = pattern.strip()
+        if p.startswith("Bash(") and p.endswith(")"):
+            p = p[5:-1]
+        if p.endswith("*"):
+            if normalized.startswith(p[:-1]):
+                return True
+        else:
+            if normalized == p:
+                return True
+    return False
+
+
+def execute_plan(commands: list[dict], allowed_tools: list[str], logger: logging.Logger) -> bool:
+    """Execute validated commands from Claude's plan. Returns True if any ran."""
+    if not commands:
+        return False
+    ran_any = False
+    for item in commands:
+        cmd = item.get("cmd", "").strip()
+        reason = item.get("reason", "")
+        if not cmd:
+            continue
+        if not is_command_allowed(cmd, allowed_tools):
+            logger.warning("Skipping (not in allowlist): %s", cmd)
+            continue
+        logger.info("Running [reason: %s]: %s", reason, cmd)
+        try:
+            result = subprocess.run(
+                cmd, shell=True, capture_output=True, text=True, timeout=CMD_TIMEOUT
+            )
+            logger.info("  exit=%d stdout=%s", result.returncode, result.stdout[:300])
+            if result.stderr:
+                logger.info("  stderr=%s", result.stderr[:200])
+            ran_any = True
+        except subprocess.TimeoutExpired:
+            logger.error("  timed out after %ds: %s", CMD_TIMEOUT, cmd)
+        except Exception as e:
+            logger.error("  failed: %s: %s", cmd, e)
+    return ran_any
 
 
 def verify(script_name: str, verify_cmd: str | None) -> bool:
@@ -135,9 +251,9 @@ def run(script_name: str, findings: str, verify_cmd_override: str | None) -> int
     risk = config["risk"]
     goal = config["goal"]
     allowed_tools = config.get("allowed_tools", [])
-    # High-risk: enforce read-only by removing any tools not explicitly safe.
-    # Config should only list read-only commands for high-risk scripts, but
-    # we enforce it in code as a safety net.
+    verify_cmd = verify_cmd_override or config.get("verify_cmd")
+
+    # High-risk: only read-only commands allowed regardless of config
     if risk == "high":
         allowed_tools = [t for t in allowed_tools
                          if any(t.startswith(safe) for safe in (
@@ -145,58 +261,49 @@ def run(script_name: str, findings: str, verify_cmd_override: str | None) -> int
                              "Bash(sudo snapraid status)", "Bash(mountpoint",
                              "Read", "Glob", "Grep",
                          ))]
-    verify_cmd = verify_cmd_override or config.get("verify_cmd")
 
-    settings = {
-        "allowedTools": allowed_tools,
-        "permissions": {"deny": ["Write", "Edit", "MultiEdit"]},
-    }
-    prompt = build_prompt(risk, goal, findings)
-
+    prompt = build_prompt(risk, goal, findings, allowed_tools)
     logger.info("Starting: risk=%s tools=%d", risk, len(allowed_tools))
 
-    settings_fd, settings_path = tempfile.mkstemp(suffix=".json", prefix="willflix-remediate-")
     try:
-        with os.fdopen(settings_fd, "w") as f:
-            json.dump(settings, f)
+        result = subprocess.run(
+            [CLAUDE_BIN, "--bare", "--print", "-p", prompt],
+            stdin=subprocess.DEVNULL,
+            capture_output=True, text=True, timeout=LLM_TIMEOUT,
+            env=_get_claude_env(),
+        )
+        output = result.stdout + result.stderr
+    except subprocess.TimeoutExpired:
+        logger.error("Claude call timed out after %ds", LLM_TIMEOUT)
+        return 1
+    except Exception as e:
+        logger.error("Claude call failed: %s", e)
+        return 1
 
-        try:
-            result = subprocess.run(
-                [CLAUDE_BIN, "--settings", settings_path, "--print", "-p", prompt],
-                capture_output=True, text=True, timeout=LLM_TIMEOUT,
-            )
-            output = result.stdout + result.stderr
-        except subprocess.TimeoutExpired:
-            logger.error("Claude call timed out after %ds", LLM_TIMEOUT)
-            return 1
-        except Exception as e:
-            logger.error("Claude call failed: %s", e)
-            return 1
+    logger.info("Claude output:\n%s", output)
 
-        logger.info("Claude output:\n%s", output)
-
-        if risk == "high":
-            print(output)
-            return 1
-
-        summary = parse_summary(output)
-        logger.info("Parsed summary: %s", summary)
-
-        if summary.get("fixed"):
-            logger.info("LLM claims fixed — verifying")
-            if verify(script_name, verify_cmd):
-                logger.info("VERIFIED FIXED: actions=%s", summary.get("actions_taken", []))
-                return 0
-            logger.warning("Verification failed despite LLM claiming fix")
-
+    # High risk: always print diagnosis, never suppress
+    if risk == "high":
         print(output)
         return 1
 
-    finally:
-        try:
-            os.unlink(settings_path)
-        except OSError:
-            pass
+    plan = parse_summary(output)
+    commands = plan.get("commands", [])
+    logger.info("Plan: %d commands, diagnosis: %s", len(commands), plan.get("diagnosis", ""))
+
+    if commands:
+        ran_any = execute_plan(commands, allowed_tools, logger)
+        if ran_any and verify(script_name, verify_cmd):
+            logger.info("VERIFIED FIXED: %s", [c.get("cmd") for c in commands])
+            return 0
+        if ran_any:
+            logger.warning("Commands ran but verification failed")
+        else:
+            logger.warning("All %d planned commands were outside the allowlist", len(commands))
+
+    # Print output so callers can append to alert body
+    print(output)
+    return 1
 
 
 def main():

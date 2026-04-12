@@ -1,9 +1,7 @@
 """Tests for willflix-remediate pure functions."""
-import json
 import textwrap
 from pathlib import Path
 
-import pytest
 import yaml
 
 
@@ -48,20 +46,19 @@ def test_load_config_returns_none_when_file_missing(tmp_path, monkeypatch):
 def test_parse_summary_extracts_last_json():
     from bin.willflix_remediate import parse_summary
     output = textwrap.dedent("""
-        I tried restarting sonarr.
-        It appears to be working now.
-        {"fixed": true, "actions_taken": ["restart sonarr"], "diagnosis": "stuck", "recommendation": "monitor"}
+        I'll restart sonarr to clear the stuck queue.
+        {"commands": [{"cmd": "docker compose restart sonarr", "reason": "stuck"}], "diagnosis": "queue stuck", "recommendation": "monitor"}
     """)
     result = parse_summary(output)
-    assert result["fixed"] is True
-    assert "restart sonarr" in result["actions_taken"]
+    assert result["commands"][0]["cmd"] == "docker compose restart sonarr"
+    assert result["diagnosis"] == "queue stuck"
 
 
-def test_parse_summary_fixed_false():
+def test_parse_summary_empty_commands():
     from bin.willflix_remediate import parse_summary
-    output = 'Some explanation\n{"fixed": false, "diagnosis": "unknown error", "actions_taken": [], "recommendation": "check logs"}'
+    output = 'Analysis done.\n{"commands": [], "diagnosis": "unknown error", "recommendation": "check logs"}'
     result = parse_summary(output)
-    assert result["fixed"] is False
+    assert result["commands"] == []
 
 
 def test_parse_summary_returns_empty_on_no_json():
@@ -71,9 +68,10 @@ def test_parse_summary_returns_empty_on_no_json():
 
 def test_parse_summary_ignores_mid_output_json():
     from bin.willflix_remediate import parse_summary
-    output = 'See {"not": "summary"} for details.\n{"fixed": true, "actions_taken": [], "diagnosis": "ok", "recommendation": ""}'
+    output = 'See {"not": "summary"} for details.\n{"commands": [], "diagnosis": "ok", "recommendation": ""}'
     result = parse_summary(output)
-    assert result["fixed"] is True
+    assert "commands" in result
+    assert result["diagnosis"] == "ok"
 
 
 # ── build_prompt ──────────────────────────────────────────────────────────────
@@ -81,7 +79,7 @@ def test_parse_summary_ignores_mid_output_json():
 def test_build_prompt_contains_risk_and_goal(tmp_path, monkeypatch):
     from bin.willflix_remediate import build_prompt
     monkeypatch.setattr("bin.willflix_remediate.AGENTS_MD", tmp_path / "AGENTS.md")
-    result = build_prompt("low", "Fix stuck queue items", "sonarr queue has 3 failed items")
+    result = build_prompt("low", "Fix stuck queue items", "sonarr queue has 3 failed items", [])
     assert "LOW" in result
     assert "Fix stuck queue items" in result
     assert "sonarr queue has 3 failed items" in result
@@ -90,9 +88,9 @@ def test_build_prompt_contains_risk_and_goal(tmp_path, monkeypatch):
 def test_build_prompt_high_risk_says_diagnose_only(tmp_path, monkeypatch):
     from bin.willflix_remediate import build_prompt
     monkeypatch.setattr("bin.willflix_remediate.AGENTS_MD", tmp_path / "AGENTS.md")
-    result = build_prompt("high", "Diagnose drive failure", "MediaA not mounted")
-    assert "diagnose" in result.lower() or "Diagnose" in result
-    assert "do not make any changes" in result.lower() or "not make" in result.lower()
+    result = build_prompt("high", "Diagnose drive failure", "MediaA not mounted", [])
+    assert "diagnose" in result.lower()
+    assert "do not" in result.lower()
 
 
 def test_build_prompt_includes_agents_md_when_present(tmp_path, monkeypatch):
@@ -100,5 +98,86 @@ def test_build_prompt_includes_agents_md_when_present(tmp_path, monkeypatch):
     agents = tmp_path / "AGENTS.md"
     agents.write_text("# System context for tests")
     monkeypatch.setattr("bin.willflix_remediate.AGENTS_MD", agents)
-    result = build_prompt("medium", "goal", "findings")
+    result = build_prompt("medium", "goal", "findings", [])
     assert "System context for tests" in result
+
+
+def test_build_prompt_includes_allowed_tools(tmp_path, monkeypatch):
+    from bin.willflix_remediate import build_prompt
+    monkeypatch.setattr("bin.willflix_remediate.AGENTS_MD", tmp_path / "AGENTS.md")
+    tools = ["Bash(docker compose restart sonarr)", "Bash(docker compose restart radarr)"]
+    result = build_prompt("low", "goal", "findings", tools)
+    assert "docker compose restart sonarr" in result
+    assert "docker compose restart radarr" in result
+
+
+# ── is_command_allowed ────────────────────────────────────────────────────────
+
+def test_is_command_allowed_exact_match():
+    from bin.willflix_remediate import is_command_allowed
+    tools = ["Bash(docker compose -f /willflix/docker/compose.yml restart sonarr)"]
+    assert is_command_allowed(
+        "docker compose -f /willflix/docker/compose.yml restart sonarr", tools
+    )
+
+
+def test_is_command_allowed_wildcard_match():
+    from bin.willflix_remediate import is_command_allowed
+    tools = ["Bash(docker compose -f /willflix/docker/compose.yml restart *)"]
+    assert is_command_allowed(
+        "docker compose -f /willflix/docker/compose.yml restart radarr", tools
+    )
+    assert is_command_allowed(
+        "docker compose -f /willflix/docker/compose.yml restart sonarr", tools
+    )
+
+
+def test_is_command_allowed_rejects_unlisted():
+    from bin.willflix_remediate import is_command_allowed
+    tools = ["Bash(docker compose -f /willflix/docker/compose.yml restart sonarr)"]
+    assert not is_command_allowed("rm -rf /", tools)
+    assert not is_command_allowed("docker compose down", tools)
+
+
+def test_is_command_allowed_wildcard_does_not_overmatch():
+    from bin.willflix_remediate import is_command_allowed
+    tools = ["Bash(docker compose -f /willflix/docker/compose.yml restart *)"]
+    assert not is_command_allowed("docker compose down sonarr", tools)
+    assert not is_command_allowed("rm -rf / && docker compose restart sonarr", tools)
+
+
+def test_is_command_allowed_bare_pattern():
+    from bin.willflix_remediate import is_command_allowed
+    tools = ["docker compose restart sonarr"]
+    assert is_command_allowed("docker compose restart sonarr", tools)
+    assert not is_command_allowed("docker compose restart radarr", tools)
+
+
+def test_is_command_allowed_quoted_url():
+    from bin.willflix_remediate import is_command_allowed
+    # Claude quotes URLs; pattern doesn't — should still match after normalization
+    tools = ["Bash(curl -s http://localhost:8989/api/v3/queue*)"]
+    assert is_command_allowed(
+        'curl -s "http://localhost:8989/api/v3/queue?page=1&pageSize=100"', tools
+    )
+    assert is_command_allowed(
+        "curl -s 'http://localhost:8989/api/v3/queue?status=failed'", tools
+    )
+
+
+def test_is_command_allowed_rejects_placeholder():
+    from bin.willflix_remediate import is_command_allowed
+    # Template placeholders must never be executed
+    tools = ["Bash(curl -s -X DELETE http://localhost:8989/api/v3/queue/*)"]
+    assert not is_command_allowed(
+        'curl -s -X DELETE "http://localhost:8989/api/v3/queue/<ID_FROM_ABOVE>"', tools
+    )
+
+
+def test_is_command_allowed_rejects_piped_command():
+    from bin.willflix_remediate import is_command_allowed
+    # Piped commands don't match URL-only patterns
+    tools = ["Bash(curl -s http://localhost:8989/api/v3/queue*)"]
+    assert not is_command_allowed(
+        'curl -s "http://localhost:8989/api/v3/queue" | python3 -m json.tool', tools
+    )
