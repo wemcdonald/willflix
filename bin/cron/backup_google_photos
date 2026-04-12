@@ -1,7 +1,32 @@
 #!/bin/bash
 
 DEST=/Volumes/MediaB
+REMEDIATE=/willflix/bin/willflix-remediate
 
 if mountpoint -q -- "$DEST"; then
-  rclone sync "drive:Google Photos/" "$DEST/Google Photos/" --ignore-checksum 2> >(egrep -v "NOTICE|ignoring$")
+  # Capture stderr for remediation context
+  RCLONE_ERR=$(rclone sync "drive:Google Photos/" "$DEST/Google Photos/" \
+    --ignore-checksum 2>&1 >(egrep -v "NOTICE|ignoring$" >&2) | cat)
+  EXIT=${PIPESTATUS[0]}
+
+  if [[ $EXIT -ne 0 ]]; then
+    FINDINGS="rclone sync failed (exit $EXIT).
+Error: $RCLONE_ERR
+rclone remotes: $(rclone listremotes 2>&1)"
+
+    # Attempt LLM remediation (low risk — suppress cron alert if fixed + retry succeeds)
+    if [[ -x "$REMEDIATE" ]]; then
+      "$REMEDIATE" --script backup_google_photos --findings "$FINDINGS" \
+        --verify-cmd "rclone listremotes 2>/dev/null | grep -q drive:" || true
+
+      if rclone listremotes 2>/dev/null | grep -q "drive:"; then
+        # Config was restored — retry the sync
+        rclone sync "drive:Google Photos/" "$DEST/Google Photos/" \
+          --ignore-checksum 2> >(egrep -v "NOTICE|ignoring$")
+        exit $?
+      fi
+    fi
+
+    exit $EXIT
+  fi
 fi
