@@ -1,7 +1,7 @@
 MAILTO=will
 
 # Snapraid - daily sync (Mon-Sat 1am), weekly sync+scrub (Sun 1am)
-0 1 * * 0 /willflix/bin/willflix-cron snapraid_weekly
+0 1 * * 0 /willflix/bin/willflix-cron --timeout 50400 snapraid_weekly
 0 1 * * 1-6 /willflix/bin/willflix-cron snapraid_daily
 
 # Snapraid freshness monitor (independent of sync cron)

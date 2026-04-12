@@ -42,11 +42,21 @@ def resolve_script(name):
 
 def main():
     if len(sys.argv) < 2:
-        print("Usage: willflix-cron <script-name> [args...]", file=sys.stderr)
+        print("Usage: willflix-cron [--timeout SECONDS] <script-name> [args...]", file=sys.stderr)
         sys.exit(1)
 
-    script = resolve_script(sys.argv[1])
-    script_args = sys.argv[2:]
+    # Optional --timeout override before the script name
+    timeout = 3600
+    args = sys.argv[1:]
+    if args[0] == "--timeout":
+        if len(args) < 3:
+            print("willflix-cron: --timeout requires a value", file=sys.stderr)
+            sys.exit(1)
+        timeout = int(args[1])
+        args = args[2:]
+
+    script = resolve_script(args[0])
+    script_args = args[1:]
     script_name = script.stem
 
     # Ensure log directory exists
@@ -56,20 +66,25 @@ def main():
     timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
     # Run the script, capturing all output
+    env = os.environ.copy()
+    venv_bin = str(REPO_DIR / ".venv" / "bin")
+    env["PATH"] = f"{venv_bin}:{env.get('PATH', '')}"
+
     try:
         result = subprocess.run(
             [str(script)] + script_args,
             capture_output=True,
             text=True,
-            timeout=3600,  # 1 hour safety timeout
+            timeout=timeout,
+            env=env,
         )
     except subprocess.TimeoutExpired as e:
         output = (e.stdout or "") + (e.stderr or "")
         with open(log_file, "a") as f:
-            f.write(f"\n=== {timestamp} === TIMEOUT after 3600s ===\n")
+            f.write(f"\n=== {timestamp} === TIMEOUT after {timeout}s ===\n")
             if output:
                 f.write(output)
-        print(f"willflix-cron: {script_name} timed out after 3600s", file=sys.stderr)
+        print(f"willflix-cron: {script_name} timed out after {timeout}s", file=sys.stderr)
         if output:
             print(output, file=sys.stderr)
         sys.exit(124)
