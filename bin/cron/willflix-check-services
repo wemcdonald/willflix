@@ -96,7 +96,7 @@ def notify(severity, key, subject, body, dedup_window=None):
     subprocess.run(cmd, check=False)
 
 
-def check_docker_service(service_name, tier, containers):
+def check_docker_service(service_name, tier, containers, llm_note=""):
     """Check a docker service. Returns list of issues."""
     severity = TIER_SEVERITY[tier]
     cname, status = match_container(service_name, containers)
@@ -106,7 +106,8 @@ def check_docker_service(service_name, tier, containers):
                f"Service: {service_name} not found on {HOSTNAME}",
                f"No container matching '{service_name}' exists.\n\n"
                f"Check:\n  cd /willflix/docker && docker compose ps {service_name}\n"
-               f"  docker compose up -d {service_name}")
+               f"  docker compose up -d {service_name}"
+               + llm_note)
         return [f"{service_name}: container not found"]
 
     if status.startswith("Restarting"):
@@ -115,7 +116,8 @@ def check_docker_service(service_name, tier, containers):
                f"Service: {service_name} crash-looping on {HOSTNAME}",
                f"Container '{cname}' is restarting (crash loop).\n"
                f"Status: {status}\n\n"
-               f"Check:\n  docker logs {cname} --tail 30")
+               f"Check:\n  docker logs {cname} --tail 30"
+               + llm_note)
         return [f"{service_name}: crash-looping"]
 
     if not status.startswith("Up"):
@@ -124,7 +126,8 @@ def check_docker_service(service_name, tier, containers):
                f"Container '{cname}' is not running.\n"
                f"Status: {status}\n\n"
                f"Check:\n  docker logs {cname} --tail 30\n"
-               f"  cd /willflix/docker && docker compose up -d {service_name}")
+               f"  cd /willflix/docker && docker compose up -d {service_name}"
+               + llm_note)
         return [f"{service_name}: not running ({status})"]
 
     if "(unhealthy)" in status:
@@ -133,13 +136,14 @@ def check_docker_service(service_name, tier, containers):
                f"Container '{cname}' is running but failing its healthcheck.\n"
                f"Status: {status}\n\n"
                f"Check:\n  docker inspect {cname} --format '{{{{json .State.Health}}}}' | python3 -m json.tool\n"
-               f"  docker logs {cname} --tail 30")
+               f"  docker logs {cname} --tail 30"
+               + llm_note)
         return [f"{service_name}: unhealthy"]
 
     return []
 
 
-def check_systemd_service(service_name, tier, unit_override=None):
+def check_systemd_service(service_name, tier, unit_override=None, llm_note=""):
     """Check a systemd service. Returns list of issues."""
     severity = TIER_SEVERITY[tier]
     unit = unit_override or f"{service_name}.service"
@@ -150,7 +154,8 @@ def check_systemd_service(service_name, tier, unit_override=None):
                f"Service: {unit} not active on {HOSTNAME}",
                f"Systemd unit '{unit}' is {status}.\n\n"
                f"Check:\n  systemctl status {unit}\n"
-               f"  journalctl -u {unit} --no-pager -n 30")
+               f"  journalctl -u {unit} --no-pager -n 30"
+               + llm_note)
         return [f"{service_name}: systemd {status}"]
 
     return []
@@ -217,6 +222,56 @@ def check_unknown_systemd(services):
 def main():
     services = load_config()
     containers = get_docker_containers()
+
+    # First pass: collect all issues without alerting, to build findings_text
+    # for remediation. We do a dry run by checking state directly.
+    pre_issues = []
+    for svc_name, svc_cfg in services.items():
+        tier = svc_cfg.get("tier", "warning")
+        svc_type = svc_cfg.get("type", "docker")
+        if tier in ("ignore",) or tier not in TIER_SEVERITY:
+            continue
+        if svc_type in ("docker", "both"):
+            cname, status = match_container(svc_name, containers)
+            if cname is None:
+                pre_issues.append(f"{svc_name}: container not found")
+            elif status.startswith("Restarting"):
+                pre_issues.append(f"{svc_name}: crash-looping (status: {status})")
+            elif not status.startswith("Up"):
+                pre_issues.append(f"{svc_name}: not running (status: {status})")
+            elif "(unhealthy)" in status:
+                pre_issues.append(f"{svc_name}: unhealthy (status: {status})")
+        if svc_type in ("systemd", "both"):
+            unit = svc_cfg.get("systemd") or f"{svc_name}.service"
+            is_active, status = check_systemd_unit(unit)
+            if not is_active:
+                pre_issues.append(f"{svc_name}: systemd unit {unit} is {status}")
+
+    # Attempt LLM remediation (medium risk — always notify, append status)
+    llm_note = ""
+    if pre_issues:
+        findings_text = "Failing services on {}:\n{}".format(
+            HOSTNAME, "\n".join(f"  - {i}" for i in pre_issues)
+        )
+        remediate = None
+        try:
+            remediate = subprocess.run(
+                ["/willflix/bin/willflix-remediate",
+                 "--script", "willflix-check-services",
+                 "--findings", findings_text],
+                capture_output=True, text=True, timeout=180,
+            )
+        except Exception:
+            pass
+
+        if remediate is not None and remediate.returncode == 0:
+            llm_note = "\n\n--- LLM auto-fix applied and verified ---"
+        elif remediate is not None and remediate.stdout.strip():
+            llm_note = f"\n\n--- LLM remediation attempt ---\n{remediate.stdout}"
+
+        # Re-fetch container state after remediation attempt
+        containers = get_docker_containers()
+
     issues = []
 
     for svc_name, svc_cfg in services.items():
@@ -231,11 +286,11 @@ def main():
             continue
 
         if svc_type in ("docker", "both"):
-            issues.extend(check_docker_service(svc_name, tier, containers))
+            issues.extend(check_docker_service(svc_name, tier, containers, llm_note))
 
         if svc_type in ("systemd", "both"):
             unit_override = svc_cfg.get("systemd")
-            issues.extend(check_systemd_service(svc_name, tier, unit_override))
+            issues.extend(check_systemd_service(svc_name, tier, unit_override, llm_note))
 
     # Check for unknown services
     check_unknown_containers(services, containers)
