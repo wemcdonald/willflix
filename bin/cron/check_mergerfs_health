@@ -36,7 +36,21 @@ if ! mountpoint -q /Volumes/Media 2>/dev/null; then
 fi
 
 if [ -n "$ERRORS" ]; then
+    # Attempt LLM diagnosis (high risk — diagnosis only, never suppresses alert)
+    LLM_DIAGNOSIS=""
+    if [[ -x /willflix/bin/willflix-remediate ]]; then
+        LLM_DIAGNOSIS=$(timeout 150 /willflix/bin/willflix-remediate \
+            --script check_mergerfs_health \
+            --findings "$ERRORS" 2>/dev/null || true)
+    fi
+
+    ALERT_BODY="$(echo -e "One or more drives in the mergerfs pool have problems:\n\n${ERRORS}\nImmediate action required.\n\nQuick diagnostics:\n  df -h /Volumes/Media*\n  dmesg | grep -i error | tail -20\n  sudo smartctl -H /dev/sdX")"
+
+    if [[ -n "$LLM_DIAGNOSIS" ]]; then
+        ALERT_BODY="${ALERT_BODY}"$'\n\n'"--- LLM Diagnosis ---"$'\n'"${LLM_DIAGNOSIS}"
+    fi
+
     "$NOTIFY" --severity CRITICAL --key "mergerfs-degraded" \
         --subject "MergerFS pool degraded on $(hostname)" \
-        --body "$(echo -e "One or more drives in the mergerfs pool have problems:\n\n${ERRORS}\nImmediate action required.\n\nQuick diagnostics:\n  df -h /Volumes/Media*\n  dmesg | grep -i error | tail -20\n  sudo smartctl -H /dev/sdX")"
+        --body "$ALERT_BODY"
 fi
