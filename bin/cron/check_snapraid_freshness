@@ -28,9 +28,7 @@ if [ "$FILE_AGE_DAYS" -gt "$MAX_AGE_DAYS" ]; then
         RUNNING_NOTE="Note: snapraid is currently running ($(pgrep -a snapraid | head -1))"
     fi
 
-    "$NOTIFY" --severity WARNING --key "snapraid-stale" \
-        --subject "SnapRAID sync is ${FILE_AGE_DAYS} days stale on $(hostname)" \
-        --body "The snapraid content file hasn't been updated in $FILE_AGE_DAYS days.
+    ALERT_BODY="The snapraid content file hasn't been updated in $FILE_AGE_DAYS days.
 Last modified: $(stat -c %y "$CONTENT_FILE")
 Threshold: $MAX_AGE_DAYS days
 $RUNNING_NOTE
@@ -40,4 +38,20 @@ Check if snapraid cron is running:
 
 Check the log:
   tail -50 /var/log/snapraid-daily.log"
+
+    # Attempt LLM diagnosis (high risk — diagnosis only, never suppresses alert)
+    LLM_DIAGNOSIS=""
+    if [[ -x /willflix/bin/willflix-remediate ]]; then
+        LLM_DIAGNOSIS=$(timeout 150 /willflix/bin/willflix-remediate \
+            --script check_snapraid_freshness \
+            --findings "$ALERT_BODY" 2>/dev/null || true)
+    fi
+
+    if [[ -n "$LLM_DIAGNOSIS" ]]; then
+        ALERT_BODY="${ALERT_BODY}"$'\n\n'"--- LLM Diagnosis ---"$'\n'"${LLM_DIAGNOSIS}"
+    fi
+
+    "$NOTIFY" --severity WARNING --key "snapraid-stale" \
+        --subject "SnapRAID sync is ${FILE_AGE_DAYS} days stale on $(hostname)" \
+        --body "$ALERT_BODY"
 fi
