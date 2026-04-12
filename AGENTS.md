@@ -56,7 +56,25 @@ if remediate is not None and remediate.returncode == 0:
 # append remediate.stdout to alert body if non-empty
 ```
 
-**Usage from bash scripts (high risk):**
+**Usage from bash scripts (low risk — suppress cron email + retry on success):**
+```bash
+if ! rclone sync ...; then
+    EXIT=$?
+    FINDINGS="rclone failed (exit $EXIT). remotes: $(rclone listremotes 2>&1)"
+    if [[ -x /willflix/bin/willflix-remediate ]]; then
+        /willflix/bin/willflix-remediate --script <name> --findings "$FINDINGS" \
+            --verify-cmd "rclone listremotes | grep -q drive:" || true
+    fi
+    # Re-check condition; retry if fixed
+    if rclone listremotes 2>/dev/null | grep -q "drive:"; then
+        rclone sync ...   # retry
+        exit $?
+    fi
+    exit $EXIT
+fi
+```
+
+**Usage from bash scripts (high risk — diagnosis only, alert always fires):**
 ```bash
 LLM_DIAGNOSIS=""
 if [[ -x /willflix/bin/willflix-remediate ]]; then

@@ -71,11 +71,13 @@ Multi-channel alerting with severity routing and debounce.
 Cron job wrapper — all crontab entries use this instead of running scripts directly.
 
 - **Usage**: `*/15 * * * * /willflix/bin/willflix-cron check_mergerfs_health`
+- **Timeout override**: `0 1 * * 0 /willflix/bin/willflix-cron --timeout 50400 snapraid_weekly` (default: 3600s)
 - **Logs**: Captures all stdout/stderr to `/willflix/log/<script>.log`
 - **Freshness stamps**: Touches `/var/tmp/willflix-monitors/<script>` on success
 - **Cron emails**: Only surfaces output to cron (triggering MAILTO) if script exits non-zero
 - **Exit code contract**: Scripts exit 0 = "I ran successfully" (even if subject is unhealthy, alerts go via willflix-notify). Non-zero = "the script itself broke".
 - **Root crontab**: `MAILTO=will`, source of truth at `/willflix/etc/root-crontab`
+- **Note**: `backup_google_photos` runs from **will's crontab** (not root's) — check both `crontab -l` and `sudo crontab -l`
 
 ## Common Operations
 
@@ -122,6 +124,7 @@ ls -la /var/tmp/willflix-monitors/
 - **MediaJ recovery wrapping up**: Drive swapped, data restored via rsync, snapraid sync running. 8 files to re-download. See `docs/mediaj-recovery-plan.md`.
 - **MediaC.Old (sdb)**: Retired Seagate ST33000651AS still physically installed. Remove when convenient.
 - **No hot spare**: MediaSpare consumed for MediaJ/MediaC recovery. Need to buy replacement. When doing so, relabel physical drive caddies: Label "MediaSpare" should say "Parity3". "Parity3" should say "MediaC". "MediaC" should be removed. New drive should say "MediaSpare"
+- **SnapRAID scrub overdue**: `snapraid_weekly` was timing out at 1h (bug fixed 2026-04-12 — now runs with 14h limit). Scrub has not completed since ~2026-03-15. Next run: Sunday 2026-04-19 at 1am.
 
 ## Incident History
 
