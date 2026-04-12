@@ -135,6 +135,16 @@ def run(script_name: str, findings: str, verify_cmd_override: str | None) -> int
     risk = config["risk"]
     goal = config["goal"]
     allowed_tools = config.get("allowed_tools", [])
+    # High-risk: enforce read-only by removing any tools not explicitly safe.
+    # Config should only list read-only commands for high-risk scripts, but
+    # we enforce it in code as a safety net.
+    if risk == "high":
+        allowed_tools = [t for t in allowed_tools
+                         if any(t.startswith(safe) for safe in (
+                             "Bash(df ", "Bash(dmesg", "Bash(cat ", "Bash(sudo smartctl",
+                             "Bash(sudo snapraid status)", "Bash(mountpoint",
+                             "Read", "Glob", "Grep",
+                         ))]
     verify_cmd = verify_cmd_override or config.get("verify_cmd")
 
     settings = {
