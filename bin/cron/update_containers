@@ -16,6 +16,7 @@ import json
 import logging
 import subprocess
 import sys
+import time
 import urllib.request
 from datetime import datetime
 from pathlib import Path
@@ -70,6 +71,20 @@ def get_container_image_id(service: str) -> str:
         if result.returncode == 0 and result.stdout.strip():
             return result.stdout.strip()
     return ""
+
+
+def wait_for_running(service: str, timeout: int = 30) -> bool:
+    """Poll until a container reaches 'running' state or timeout expires."""
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        result = subprocess.run(
+            ["docker", "inspect", "--format", "{{.State.Status}}", service],
+            capture_output=True, text=True,
+        )
+        if result.returncode == 0 and result.stdout.strip() == "running":
+            return True
+        time.sleep(2)
+    return False
 
 
 def remove_container(service: str):
@@ -172,6 +187,8 @@ def main():
 
     # Track network_mode dependencies (e.g. qbittorrent → vpn)
     net_deps = get_network_dependents()
+    # Services that use network_mode: service:X — need special handling on direct update
+    net_mode_svcs = {dep for deps in net_deps.values() for dep in deps}
 
     # Decide Plex handling
     plex_skip_reason = None
@@ -184,6 +201,7 @@ def main():
 
     updated = []
     skipped = []
+    failures = []
 
     for svc in services:
         # Only upgrade services listed in willflix-services.conf
@@ -217,9 +235,17 @@ def main():
 
         log.info(f"  Updating {svc}...")
         remove_container(svc)
-        result = compose("up", "-d", "--no-deps", "--force-recreate", svc, capture=True)
+        if svc in net_mode_svcs:
+            # This service shares another container's network namespace (network_mode: service:X).
+            # --no-deps prevents compose from resolving that reference even when the parent is
+            # running, causing "network service:X not found". Drop --no-deps so compose can
+            # find the parent; drop --force-recreate since the container was just removed.
+            result = compose("up", "-d", svc, capture=True)
+        else:
+            result = compose("up", "-d", "--no-deps", "--force-recreate", svc, capture=True)
         if result.returncode != 0:
             log.warning(f"  {svc} failed: {result.stderr.strip()[:200]}")
+            failures.append((svc, result.stderr.strip()))
         else:
             updated.append(svc)
             # Recreate containers that share this service's network namespace,
@@ -227,9 +253,13 @@ def main():
             for dep in net_deps.get(svc, []):
                 log.info(f"  Restarting {dep} (network_mode: service:{svc})...")
                 remove_container(dep)
-                dep_result = compose("up", "-d", "--no-deps", "--force-recreate", dep, capture=True)
+                # Don't use --no-deps: compose must resolve network_mode: service:X,
+                # which requires it to inspect the parent container's network namespace.
+                # Don't use --force-recreate: container was just removed, so it's recreated anyway.
+                dep_result = compose("up", "-d", dep, capture=True)
                 if dep_result.returncode != 0:
                     log.warning(f"  {dep} failed: {dep_result.stderr.strip()[:200]}")
+                    failures.append((dep, dep_result.stderr.strip()))
                 else:
                     updated.append(dep)
 
@@ -255,6 +285,34 @@ def main():
         body = f"Updated: {', '.join(updated)}"
         if skipped:
             body += f"\nSkipped: {', '.join(skipped)}"
+        if failures:
+            failure_lines = "\n".join(f"  {svc}: {err[:200]}" for svc, err in failures)
+            body += f"\nFailed ({len(failures)}):\n{failure_lines}"
+
+            # Attempt LLM remediation (medium risk — always notify, append status)
+            findings_text = (
+                f"update_containers failures:\n"
+                + "\n".join(f"  {svc}: {err[:400]}" for svc, err in failures)
+            )
+            remediate = None
+            try:
+                remediate = subprocess.run(
+                    ["/willflix/bin/willflix-remediate",
+                     "--script", "update_containers",
+                     "--findings", findings_text],
+                    capture_output=True, text=True, timeout=180,
+                )
+            except Exception:
+                pass
+
+            llm_note = ""
+            if remediate is not None and remediate.returncode == 0:
+                llm_note = "\n\n--- LLM auto-fix applied and verified ---"
+            elif remediate is not None and remediate.stdout.strip():
+                llm_note = f"\n\n--- LLM remediation attempt ---\n{remediate.stdout}"
+
+            body += llm_note
+
         notify.send("INFO", "container-updates", f"Container updates: {len(updated)} on lafayette", body)
 
 
