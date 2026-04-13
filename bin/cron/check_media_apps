@@ -89,7 +89,13 @@ class SonarrRadarrChecker:
 
             title = item.get("title", "Unknown")
             error_text = "; ".join(all_msgs) if all_msgs else dl_status
-            errors.append({"title": title, "error": error_text, "status": dl_status})
+            errors.append({
+                "id": item.get("id"),
+                "title": title,
+                "error": error_text,
+                "status": dl_status,
+                "state": item.get("trackedDownloadState", ""),
+            })
 
         return errors
 
@@ -438,12 +444,25 @@ def main():
             severity = "CRITICAL"
 
         # Attempt LLM remediation before alerting (low risk — suppress if fixed)
+        # Build rich findings with API credentials and item IDs so the LLM can
+        # generate specific commands without needing a separate queue-read step.
+        import json as _json
+        sonarr_queue_items = issues.get("Sonarr", {}).get("queue errors", [])
+        radarr_queue_items = issues.get("Radarr", {}).get("queue errors", [])
+        rich_findings = body + f"""
+
+--- Structured data for remediation (do not include in alert) ---
+Sonarr: http://localhost:8989  API key: {sonarr_key}
+Radarr: http://localhost:7878  API key: {radarr_key}
+Sonarr queue items with errors: {_json.dumps(sonarr_queue_items, indent=2)}
+Radarr queue items with errors: {_json.dumps(radarr_queue_items, indent=2)}
+"""
         remediate = None
         try:
             remediate = subprocess.run(
                 ["/willflix/bin/willflix-remediate",
                  "--script", "check_media_apps",
-                 "--findings", body],
+                 "--findings", rich_findings],
                 capture_output=True, text=True, timeout=180,
             )
         except Exception:
