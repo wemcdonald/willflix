@@ -241,6 +241,12 @@ def verify(script_name: str, verify_cmd: str | None) -> bool:
 
 def run(script_name: str, findings: str, verify_cmd_override: str | None) -> int:
     """Core logic. Returns exit code: 0 = fixed+verified, 1 = everything else."""
+    # Recursion guard: verification re-runs the original script, which would
+    # call willflix-remediate again. Break the cycle by refusing re-entry.
+    if os.environ.get("WILLFLIX_REMEDIATE_ACTIVE"):
+        sys.exit(1)
+    os.environ["WILLFLIX_REMEDIATE_ACTIVE"] = "1"
+
     logger = setup_logging(script_name)
 
     config = load_config(script_name)
