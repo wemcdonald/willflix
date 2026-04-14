@@ -158,20 +158,27 @@ def is_command_allowed(cmd: str, allowed_tools: list[str]) -> bool:
     """Check if a command matches any entry in the allowlist.
 
     Allowlist entries may be bare commands or Bash(...) wrapped patterns.
-    Trailing * means prefix match; otherwise exact match.
-    Commands containing <placeholder> template markers are always rejected.
+    Patterns are matched using fnmatch glob rules: * matches any sequence
+    of characters including spaces, so patterns like
+    "curl * http://localhost:8989/api/v3/queue*" match any curl command
+    with any flags going to that endpoint, regardless of flag order.
+
+    Commands containing <placeholder> markers or shell metacharacters
+    are always rejected.
     """
+    import fnmatch
+    import re
+
     cmd = cmd.strip()
 
-    import re
     # Reject unfilled template placeholders (e.g. <ID_FROM_ABOVE>)
     if re.search(r'<[^>]+>', cmd):
         return False
 
-    # Reject dangerous shell metacharacters (pipe, semicolon, backtick, subshell).
-    # & is excluded: it appears legitimately in URL query strings inside quotes
-    # and is safe to execute since Claude's output keeps it quoted.
-    if re.search(r'[|;`]|\$\(', cmd):
+    # Reject dangerous shell metacharacters (pipe, semicolon, backtick, subshell,
+    # shell AND/OR operators, path traversal).
+    # Single & is allowed: appears in URL query strings (?a=1&b=2).
+    if re.search(r'[|;`]|\$\(|\.\.|&&|\|\|', cmd):
         return False
 
     normalized = _normalize_cmd(cmd)
@@ -180,12 +187,8 @@ def is_command_allowed(cmd: str, allowed_tools: list[str]) -> bool:
         p = pattern.strip()
         if p.startswith("Bash(") and p.endswith(")"):
             p = p[5:-1]
-        if p.endswith("*"):
-            if normalized.startswith(p[:-1]):
-                return True
-        else:
-            if normalized == p:
-                return True
+        if fnmatch.fnmatch(normalized, p):
+            return True
     return False
 
 

@@ -155,29 +155,62 @@ def test_is_command_allowed_bare_pattern():
 
 def test_is_command_allowed_quoted_url():
     from bin.willflix_remediate import is_command_allowed
-    # Claude quotes URLs; pattern doesn't — should still match after normalization
-    tools = ["Bash(curl -s http://localhost:8989/api/v3/queue*)"]
+    # Claude quotes URLs; normalization strips them — should still match
+    tools = ["Bash(curl * http://localhost:8989/api/v3/queue*)"]
     assert is_command_allowed(
-        'curl -s "http://localhost:8989/api/v3/queue?page=1&pageSize=100"', tools
+        'curl -L -s "http://localhost:8989/api/v3/queue?page=1&pageSize=100"', tools
     )
     assert is_command_allowed(
-        "curl -s 'http://localhost:8989/api/v3/queue?status=failed'", tools
+        "curl -L -s 'http://localhost:8989/api/v3/queue?status=failed'", tools
     )
+
+
+def test_is_command_allowed_mid_wildcard():
+    from bin.willflix_remediate import is_command_allowed
+    # * in the middle matches any flags between curl and the URL
+    tools = ["Bash(curl * http://localhost:8989/api/v3/queue*)"]
+    # GET with no extra flags
+    assert is_command_allowed("curl -L -s http://localhost:8989/api/v3/queue?page=1", tools)
+    # DELETE with extra flags
+    assert is_command_allowed(
+        'curl -L -s -X DELETE http://localhost:8989/api/v3/queue/bulk?removeFromClient=false '
+        '-H "Content-Type: application/json" -d \'{"ids":[123]}\'',
+        tools,
+    )
+    # Different flag order
+    assert is_command_allowed("curl -s -L http://localhost:8989/api/v3/queue?apikey=abc", tools)
+    # Must not match different endpoint
+    assert not is_command_allowed("curl -L -s http://localhost:8989/api/v3/settings", tools)
 
 
 def test_is_command_allowed_rejects_placeholder():
     from bin.willflix_remediate import is_command_allowed
-    # Template placeholders must never be executed
-    tools = ["Bash(curl -s -X DELETE http://localhost:8989/api/v3/queue/*)"]
+    tools = ["Bash(curl * http://localhost:8989/api/v3/queue*)"]
     assert not is_command_allowed(
-        'curl -s -X DELETE "http://localhost:8989/api/v3/queue/<ID_FROM_ABOVE>"', tools
+        'curl -L -s -X DELETE "http://localhost:8989/api/v3/queue/<ID_FROM_ABOVE>"', tools
     )
 
 
 def test_is_command_allowed_rejects_piped_command():
     from bin.willflix_remediate import is_command_allowed
-    # Piped commands don't match URL-only patterns
-    tools = ["Bash(curl -s http://localhost:8989/api/v3/queue*)"]
+    tools = ["Bash(curl * http://localhost:8989/api/v3/queue*)"]
     assert not is_command_allowed(
-        'curl -s "http://localhost:8989/api/v3/queue" | python3 -m json.tool', tools
+        'curl -L -s "http://localhost:8989/api/v3/queue" | python3 -m json.tool', tools
+    )
+
+
+def test_is_command_allowed_rejects_path_traversal():
+    from bin.willflix_remediate import is_command_allowed
+    tools = ["Bash(curl * http://localhost:8989/api/v3/queue*)"]
+    assert not is_command_allowed(
+        "curl -L -s http://localhost:8989/api/v3/queue/../../settings", tools
+    )
+
+
+def test_is_command_allowed_rejects_shell_and():
+    from bin.willflix_remediate import is_command_allowed
+    tools = ["Bash(docker compose -f /willflix/docker/compose.yml restart *)"]
+    # && would run a second command after the allowed one
+    assert not is_command_allowed(
+        "docker compose -f /willflix/docker/compose.yml restart sonarr && rm -rf /", tools
     )
