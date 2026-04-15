@@ -19,6 +19,10 @@ __pycache__/
 
 # Dependencies
 node_modules/
+.venv/
+
+# MemPalace vector DB (large binaries — not git-friendly; back up separately)
+mempalace/
 
 # OS files
 .DS_Store

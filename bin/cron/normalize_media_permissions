@@ -10,3 +10,10 @@ for drive in /Volumes/Media?; do
     fi
   done
 done
+
+# CalibreLibrary: calibre-web-automated's ingest service runs as root (s6 design),
+# so new imports land as root-owned. Fix nightly. No plex group needed here.
+if [[ -d /Volumes/Media/Ebooks/CalibreLibrary ]]; then
+  chown -R will:will /Volumes/Media/Ebooks/CalibreLibrary
+  chmod -R uog+rX,ug+w /Volumes/Media/Ebooks/CalibreLibrary
+fi

@@ -577,6 +577,11 @@ services:
       - /Volumes/Media/Ebooks/incoming/:/cwa-book-ingest
       - /Volumes/Media/Ebooks/CalibreLibrary:/calibre-library
       - /willflix/docker/appdata/calibre-web-automated/s6-overlay/s6-rc.d/calibre-content-server:/etc/s6-overlay/s6-rc.d/calibre-content-server
+      # Patch ingest service to run ingest_processor/watch_fallback as abc (uid 501)
+      # so books land in CalibreLibrary owned by 501:501, not root.
+      # run.orig = unmodified image script; run = thin wrapper that sed-patches it.
+      - /willflix/docker/appdata/calibre-web-automated/cwa-ingest-override/run.orig:/etc/s6-overlay/s6-rc.d/cwa-ingest-service/run.orig
+      - /willflix/docker/appdata/calibre-web-automated/cwa-ingest-override/run:/etc/s6-overlay/s6-rc.d/cwa-ingest-service/run
     restart: unless-stopped
     ports:
       - 58080:8080
