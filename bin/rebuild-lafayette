@@ -246,6 +246,7 @@ stage_6_configs() {
     echo "  - snapraid.conf → /etc/snapraid.conf"
     echo "  - Root crontab from etc/root-crontab"
     echo "  - Systemd units (symlinked from etc/systemd/)"
+    echo "  - Systemd manager drop-ins (copied from etc/systemd.conf.d/)"
     echo "  - Sendmail wrapper (symlinked from bin/sendmail-system)"
     echo ""
     confirm || return 0
@@ -270,8 +271,19 @@ stage_6_configs() {
         ln -sfn "$unit" "/etc/systemd/system/$name"
         count=$((count + 1))
     done
-    systemctl daemon-reload
     info "$count systemd units symlinked"
+
+    # Systemd manager drop-ins (system.conf.d)
+    if [[ -d "$REPO_DIR/etc/systemd.conf.d" ]]; then
+        mkdir -p /etc/systemd/system.conf.d
+        for conf in "$REPO_DIR/etc/systemd.conf.d/"*.conf; do
+            [[ -f "$conf" ]] || continue
+            ln -sfn "$conf" "/etc/systemd/system.conf.d/$(basename "$conf")"
+        done
+        info "systemd manager drop-ins symlinked"
+    fi
+    systemctl daemon-reload
+    info "systemd daemon reloaded"
 
     # Sendmail wrapper
     ln -sfn "$REPO_DIR/bin/sendmail-system" /usr/sbin/sendmail
