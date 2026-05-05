@@ -13,6 +13,7 @@ Files here are the **canonical versions** of system config files. They are maint
 | `willflix-check-backups.conf` | Read by `bin/cron/willflix-check-backups` | Direct (same path) |
 | `willflix-services.conf` | Read by `bin/cron/willflix-check-services` | Direct (same path) |
 | `willflix-notify.config` | Read by `bin/willflix-notify` | Direct (same path) |
+| `sysctl.d/` | `/etc/sysctl.d/` | `rebuild-lafayette` + `sudo sysctl --system` |
 | `systemd/` | `/etc/systemd/system/` | `rebuild-lafayette` |
 | `systemd.conf.d/` | `/etc/systemd/system.conf.d/` | `rebuild-lafayette` + `sudo systemctl daemon-reload` |
 | `backup.d/` | Backup job configs | Read by backup scripts |

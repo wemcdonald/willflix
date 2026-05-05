@@ -264,6 +264,16 @@ stage_6_configs() {
     crontab "$REPO_DIR/etc/root-crontab"
     info "Root crontab installed"
 
+    # sysctl.d drop-ins
+    if [[ -d "$REPO_DIR/etc/sysctl.d" ]]; then
+        for conf in "$REPO_DIR/etc/sysctl.d/"*.conf; do
+            [[ -f "$conf" ]] || continue
+            ln -sfn "$conf" "/etc/sysctl.d/$(basename "$conf")"
+        done
+        sysctl --system &>/dev/null
+        info "sysctl.d drop-ins symlinked and loaded"
+    fi
+
     # Systemd units
     local count=0
     for unit in "$REPO_DIR/etc/systemd/"*.service; do

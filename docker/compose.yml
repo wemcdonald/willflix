@@ -45,6 +45,12 @@ secrets:
     file: ./secrets/supabase_jwt_secret
   openclaw_gateway_token:
     file: ./secrets/openclaw_gateway_token
+  openai_api_key:
+    file: ./secrets/openai_api_key
+  openbrain_postgres_password:
+    file: ./secrets/openbrain_postgres_password
+  openbrain_mcp_keys:
+    file: ./secrets/openbrain_mcp_keys
 
 services:
   # backup: retired — replaced by host-based bin/cron/backup_restic
@@ -277,7 +283,7 @@ services:
 
 
   postgres:
-    image: postgres:17
+    image: pgvector/pgvector:pg17-trixie
     restart: always
     # set shared memory limit when using docker compose
     shm_size: 128mb
@@ -532,6 +538,34 @@ services:
       - "traefik.http.routers.audiobookshelf.rule=Host(`audiobooks.willflix.org`)"
       - "traefik.http.routers.audiobookshelf.entrypoints=websecure"
       - "traefik.http.routers.audiobookshelf.tls.certresolver=le"
+    networks:
+      - traefik_public
+
+
+  navidrome:
+    image: deluan/navidrome:latest
+    container_name: navidrome
+    user: 122:129
+    environment:
+      - TZ=America/Los_Angeles
+      - ND_LOGLEVEL=info
+      - ND_MUSICFOLDER=/music
+      - ND_DATAFOLDER=/data
+      - ND_SCANSCHEDULE=1h
+      - ND_ENABLESHARING=true
+    volumes:
+      - /willflix/docker/appdata/navidrome/data:/data
+      - /Volumes/Media/Music:/music:ro
+    ports:
+      - 4533:4533
+    restart: unless-stopped
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.services.navidrome.loadbalancer.server.port=4533"
+      - "traefik.docker.network=config_traefik_public"
+      - "traefik.http.routers.navidrome.rule=Host(`music.willflix.org`)"
+      - "traefik.http.routers.navidrome.entrypoints=websecure"
+      - "traefik.http.routers.navidrome.tls.certresolver=le"
     networks:
       - traefik_public
 
@@ -797,6 +831,7 @@ services:
       - /Volumes/Media/TV4K:/Volumes/Media/TV4K
       - /Volumes/Media/Movies4K:/Volumes/Media/Movies4K
       - /Volumes/Media/CalibreAudiobooks:/Volumes/Media/CalibreAudiobooks
+      - /Volumes/Media/Music:/Volumes/Media/Music
     restart: unless-stopped
 
   webhook-handler:
@@ -1181,6 +1216,62 @@ services:
       - openclaw_gateway_token
     volumes:
       - /willflix/docker/appdata/openclaw-node:/root/.openclaw
+
+  openbrain-mcp:
+    build: ./images/openbrain-mcp
+    container_name: openbrain-mcp
+    restart: unless-stopped
+    depends_on:
+      - postgres
+    secrets:
+      - openbrain_postgres_password
+      - openbrain_mcp_keys
+      - openai_api_key
+    environment:
+      - TZ=America/Los_Angeles
+      - POSTGRES_HOST=postgres
+      - POSTGRES_PORT=5432
+      - POSTGRES_DB=openbrain
+      - POSTGRES_USER=openbrain
+      - PORT=8000
+    networks:
+      - traefik_public
+      - default
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.services.openbrain-mcp.loadbalancer.server.port=8000"
+      - "traefik.http.routers.openbrain-mcp.rule=Host(`brain.willflix.org`)"
+      - "traefik.http.routers.openbrain-mcp.entrypoints=websecure"
+      - "traefik.http.routers.openbrain-mcp.tls.certresolver=le"
+      - "traefik.docker.network=config_traefik_public"
+      # NO authentik middleware: MCP clients (Claude Desktop, ChatGPT)
+      # cannot do interactive auth — auth is the per-user ?key= URL param.
+
+  parchment:
+    build:
+      context: /willflix/docker/images/parchment
+      dockerfile: Dockerfile
+    container_name: parchment
+    restart: unless-stopped
+    volumes:
+      - /home/will/code/egreth/src/egreth.materials/Release/egreth.zblorb:/usr/share/nginx/html/egreth.zblorb:ro
+      - /home/will/code/egreth/lore/_raw/zork-i/source/COMPILED/zork1.z3:/usr/share/nginx/html/games/zork1.z3:ro
+      - /home/will/code/egreth/lore/_raw/zork-ii/source/COMPILED/zork2.z3:/usr/share/nginx/html/games/zork2.z3:ro
+      - /home/will/code/egreth/lore/_raw/zork-iii/source/COMPILED/zork3.z3:/usr/share/nginx/html/games/zork3.z3:ro
+      - /home/will/code/egreth/lore/_raw/enchanter/source/historicalsource-enchanter/COMPILED/enchanter.z3:/usr/share/nginx/html/games/enchanter.z3:ro
+      - /home/will/code/egreth/lore/_raw/sorcerer/source/historicalsource-sorcerer/COMPILED/sorcerer.z3:/usr/share/nginx/html/games/sorcerer.z3:ro
+      - /home/will/code/egreth/lore/_raw/wishbringer/source/historicalsource-wishbringer/COMPILED/nj2.z3:/usr/share/nginx/html/games/wishbringer.z3:ro
+      - /home/will/code/egreth/lore/_raw/spellbreaker/source/historicalsource-spellbreaker/COMPILED/z6.z3:/usr/share/nginx/html/games/spellbreaker.z3:ro
+      - /home/will/code/egreth/lore/_raw/beyond-zork/source/historicalsource-beyondzork/COMPILED/bzbeta.z5:/usr/share/nginx/html/games/beyond-zork.z5:ro
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.services.parchment.loadbalancer.server.port=80"
+      - "traefik.http.routers.parchment.rule=Host(`zork.willflix.org`)"
+      - "traefik.http.routers.parchment.entrypoints=websecure"
+      - "traefik.http.routers.parchment.tls.certresolver=le"
+      - "traefik.http.routers.parchment.middlewares=authentik-forward@file"
+    networks:
+      - traefik_public
 
 volumes:
   samba_config:
