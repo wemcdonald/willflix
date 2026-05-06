@@ -1249,11 +1249,13 @@ services:
 
   parchment:
     build:
-      context: /willflix/docker/images/parchment
+      context: /home/will/code/parchment-server
       dockerfile: Dockerfile
     container_name: parchment
     restart: unless-stopped
     volumes:
+      - /willflix/docker/appdata/parchment-saves:/data
+      - /willflix/docker/images/parchment/index.html:/usr/share/nginx/html/index.html:ro
       - /home/will/code/egreth/src/egreth.materials/Release/egreth.zblorb:/usr/share/nginx/html/egreth.zblorb:ro
       - /home/will/code/egreth/lore/_raw/zork-i/source/COMPILED/zork1.z3:/usr/share/nginx/html/games/zork1.z3:ro
       - /home/will/code/egreth/lore/_raw/zork-ii/source/COMPILED/zork2.z3:/usr/share/nginx/html/games/zork2.z3:ro
@@ -1266,6 +1268,13 @@ services:
     labels:
       - "traefik.enable=true"
       - "traefik.http.services.parchment.loadbalancer.server.port=80"
+      # public launcher static assets — no auth (engine code only, not game content)
+      - "traefik.http.routers.parchment-static.rule=Host(`zork.willflix.org`) && PathPrefix(`/public/`)"
+      - "traefik.http.routers.parchment-static.entrypoints=websecure"
+      - "traefik.http.routers.parchment-static.tls.certresolver=le"
+      - "traefik.http.routers.parchment-static.priority=100"
+      - "traefik.http.routers.parchment-static.service=parchment"
+      # everything else (HTML, storyfiles, /api/saves) behind authentik
       - "traefik.http.routers.parchment.rule=Host(`zork.willflix.org`)"
       - "traefik.http.routers.parchment.entrypoints=websecure"
       - "traefik.http.routers.parchment.tls.certresolver=le"
