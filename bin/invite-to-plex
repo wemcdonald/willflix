@@ -27,7 +27,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 if [ -f "/app/secrets/plex_api_env" ]; then
     ENV_FILE="/app/secrets/plex_api_env"
 else
-    ENV_FILE="$SCRIPT_DIR/../config/secrets/plex_api_env"
+    ENV_FILE="$SCRIPT_DIR/../docker/secrets/plex_api_env"
 fi
 
 if [ ! -f "$ENV_FILE" ]; then
@@ -51,6 +51,7 @@ SECTION_ARRAY=$(echo "$SECTION_IDS" | sed 's/,/,/g' | sed 's/^/[/' | sed 's/$/]/
 # Create invitation via Plex API
 RESPONSE=$(curl -s -w "%{http_code}" -X POST "https://plex.tv/api/v2/shared_servers" \
   -H "X-Plex-Token: $PLEX_TOKEN" \
+  -H "X-Plex-Client-Identifier: willflix-add-user" \
   -H "Content-Type: application/json" \
   -d "{
     \"server_id\": \"$MACHINE_IDENTIFIER\",

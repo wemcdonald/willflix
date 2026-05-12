@@ -24,7 +24,7 @@ if [ -z "$CALIBRE_USER_ROLE" ] || [ -z "$CALIBRE_ADMIN_ROLE" ]; then
 fi
 
 # Configuration
-CALIBRE_DB="/docker/appdata/calibre-web-automated/app.db"
+CALIBRE_DB="/willflix/docker/appdata/calibre-web-automated/cwa/app.db"
 
 # Colors for output
 RED='\033[0;31m'
