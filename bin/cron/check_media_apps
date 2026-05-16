@@ -229,6 +229,28 @@ class NZBGetChecker:
         return stuck
 
 
+class QBittorrentChecker:
+    """Probe qBittorrent webui to detect silent failures.
+
+    The LSIO image keeps the container 'running' even while qbit-nox
+    restart-loops internally (e.g. stale lockfile after a host crash),
+    so container liveness alone is insufficient — actually hit the webui.
+    """
+
+    def __init__(self, base_url: str):
+        self.base_url = base_url.rstrip("/")
+
+    def check_webui(self) -> list:
+        try:
+            req = urllib.request.Request(self.base_url + "/")
+            with urllib.request.urlopen(req, timeout=5) as resp:
+                if resp.status != 200:
+                    return [f"webui returned HTTP {resp.status}"]
+        except Exception as e:
+            return [f"webui unreachable: {e}"]
+        return []
+
+
 def build_report(issues: dict) -> tuple:
     """Build alert subject and body from all issues found.
 
@@ -352,9 +374,26 @@ def main():
 
     issues = {}
 
-    # If qbittorrent is already down, suppress the downstream health warnings it causes
-    # in Radarr/Sonarr — those are noise when the container alert already covers it.
+    # Check qBittorrent first. The container can stay 'running' while qbit-nox
+    # crash-loops internally, so probe the webui too. Track health separately
+    # so Sonarr/Radarr downstream warnings caused by it can be suppressed
+    # (one root-cause alert beats three).
+    qbit_url = cfg.get("QBITTORRENT_URL", "http://localhost:8967")
     qbit_running = is_container_running("qbittorrent")
+    qbit_issues = {}
+    if not qbit_running:
+        qbit_issues["container"] = ["qbittorrent container not running"]
+    else:
+        log.info("Checking qBittorrent...")
+        webui_problems = QBittorrentChecker(qbit_url).check_webui()
+        if webui_problems:
+            qbit_issues["webui"] = webui_problems
+    if qbit_issues:
+        issues["qBittorrent"] = qbit_issues
+        log.info(f"  Found {sum(len(v) for v in qbit_issues.values())} issues")
+    else:
+        log.info("  OK")
+    qbit_healthy = not qbit_issues
 
     # Sonarr
     if sonarr_key:
@@ -375,7 +414,7 @@ def main():
             sonarr_issues["disk space"] = disk_warnings
 
         health = sonarr.check_health()
-        if not qbit_running:
+        if not qbit_healthy:
             health = [h for h in health if "qBittorrent" not in h.get("message", "")]
         if health:
             sonarr_issues["health warnings"] = health
@@ -405,7 +444,7 @@ def main():
             radarr_issues["disk space"] = disk_warnings
 
         health = radarr.check_health()
-        if not qbit_running:
+        if not qbit_healthy:
             health = [h for h in health if "qBittorrent" not in h.get("message", "")]
         if health:
             radarr_issues["health warnings"] = health
