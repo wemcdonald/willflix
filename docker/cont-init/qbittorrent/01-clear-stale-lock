@@ -1,0 +1,11 @@
+#!/usr/bin/with-contenv bash
+# Remove stale single-instance lock/socket left behind by an unclean shutdown.
+# qBittorrent 5.x exits within ~1s if either is present, even when no other
+# instance is running, causing a permanent restart loop after a host crash.
+
+for f in /config/qBittorrent/lockfile /config/qBittorrent/ipc-socket; do
+    if [ -e "$f" ]; then
+        echo "[cont-init] removing stale $f"
+        rm -f "$f"
+    fi
+done

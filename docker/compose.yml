@@ -227,6 +227,7 @@ services:
     volumes:
       - /willflix/docker/appdata/qBittorrent:/config/qBittorrent
       - /Volumes/Media:/Volumes/Media
+      - /willflix/docker/cont-init/qbittorrent:/custom-cont-init.d:ro
     depends_on:
       - vpn
 
@@ -1256,7 +1257,10 @@ services:
     volumes:
       - /willflix/docker/appdata/parchment-saves:/data
       - /willflix/docker/images/parchment/index.html:/usr/share/nginx/html/index.html:ro
-      - /home/will/code/egreth/src/egreth.materials/Release/egreth.zblorb:/usr/share/nginx/html/egreth.zblorb:ro
+      # Mount the Release directory (not the file) so atomic rename-replaces
+      # by the Inform compiler get picked up — bind-mounting a single file
+      # pins the inode and freezes served bytes after the next compile.
+      - /home/will/code/egreth/src/egreth.materials/Release:/usr/share/nginx/html/egreth-release:ro
       - /home/will/code/egreth/lore/_raw/zork-i/source/COMPILED/zork1.z3:/usr/share/nginx/html/games/zork1.z3:ro
       - /home/will/code/egreth/lore/_raw/zork-ii/source/COMPILED/zork2.z3:/usr/share/nginx/html/games/zork2.z3:ro
       - /home/will/code/egreth/lore/_raw/zork-iii/source/COMPILED/zork3.z3:/usr/share/nginx/html/games/zork3.z3:ro
