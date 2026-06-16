@@ -68,6 +68,40 @@ but if the box **still freezes while throttled**, that's strongly informative (p
 from a simple raw-load → power/heat threshold). If freezes stop, load is confirmed as the
 trigger. Either outcome advances the diagnosis.
 
+## Overnight 2026-06-16 — first data after changes
+
+Ran the (now throttled) 01:00 `snapraid_daily` sync; box **did not freeze** (up 21h).
+What the telemetry showed:
+
+- **Thermal: essentially ruled out.** CPU held **38–42 °C** the whole time, including the
+  load ramp to 6.0 at 01:05–01:20 (crit is 91 °C). Cooling is adequate even under sync
+  load. (Caveat: this was the throttled run; but the flatness is decisive enough to
+  down-weight thermal hard.)
+- **Power telemetry is DEAD.** Every IPMI voltage rail (VTT, Vcore, all VDIMM, +1.1/1.5/
+  3.3/5/12 V, VBAT) reads **"No Reading"**. We **cannot detect a rail sag in software** —
+  the power-sag hypothesis can now only be tested **physically on-site** (multimeter / PSU
+  load test). This is the single biggest gap.
+- **Running a single PSU by choice.** Chassis is SC846E16-R1200B (1+1 redundant cage) but
+  only one **PWS-920P-SQ** (quiet) module is installed — second bay left empty for noise
+  (which is why IPMI only sees `PS2`). The original matched **PWS-1K21P-1R** 1200W pair was
+  pulled for noise, not failure, and is retained. So there's currently **no failover**: any
+  transient sag/glitch on the single module crashes the box. 920W is ample capacity (~500W
+  load) so this isn't watts — but restoring a *matched* redundant pair (load-share +
+  failover + PSU telemetry) is the top on-site action. Don't mix 920-SQ with 1200W.
+- SEL still clean (0 entries), no kernel warnings overnight. Throttle engaged then restored
+  correctly (`no_turbo` 0, max_freq 2.5 GHz now). snapraid completed (freshness stamp set).
+
+**Do not over-read the clean night.** Only ~2 of ~38 nightly syncs froze (~5%/night), so a
+single quiet night is ~95% likely even with no fix — it proves nothing about the throttle.
+The value last night was the telemetry, not the survival. Need 1–2 weeks of clean windows
+to say the mitigation helped.
+
+### Revised hypothesis ranking (post-overnight)
+1. **Power delivery** (now clear lead) — and we have a concrete lead: `PS1` absent/failed on
+   a dual-PSU board; fits load-timing + dead-power-button. Telemetry can't confirm → on-site.
+2. **Bad DIMM** — still open (EDAC blind); memtest on-site.
+3. ~~Thermal~~ — down-weighted to unlikely (temps flat and cold under load).
+
 ## Confirmed freeze timeline (from `journalctl --list-boots`)
 
 | Boot ended (last journal line) | Recovered (next boot) | Down | Signature |

@@ -50,12 +50,29 @@ device conflict first:
    itself is unreliable (consistent with the dead-power-button symptom) → see Step 6.
    Keep the panic sysctls (already live and correct).
 
-## Step 2 — Power delivery (prime suspect)
+## Step 2 — Power delivery (PRIME suspect, promoted 2026-06-16)
 The box wedges during peak multi-drive load and the power button dies during the hang —
-both point at the PSU / power path on a ~14-yr platform.
+both point at the PSU / power path on a ~14-yr platform. Overnight telemetry strengthened
+this and exposed a concrete lead.
+- [ ] **Restore PSU redundancy (do this first — cheapest mitigation + diagnostic).**
+      Current state: chassis is a SC846E16-R1200B (1+1 redundant cage), but only a single
+      **PWS-920P-SQ** (quiet) module is installed — second bay intentionally empty for
+      noise, which is why IPMI only sees `PS2`. The original matched **PWS-1K21P-1R** 1200W
+      pair was pulled for noise (NOT because faulty) and is retained.
+      - Reinstall the **matched original 1200W pair** → real 1+1: load-sharing halves the
+        current per module, either covers a transient sag, and the BMC resumes reporting
+        PS1/PS2 + redundancy/AC-fail SEL events (telemetry we currently lack).
+      - **Matching constraint: do NOT mix the 920-SQ with a 1200W module** — redundant
+        modules must be the same model to share. Run a matched pair (both 1200W, or two
+        920-SQ).
+      - This is a *test*: if freezes stop with the redundant pair in, power is confirmed →
+        then source a **second PWS-920P-SQ** for a quiet matched pair as the permanent fix.
+      - Capacity is NOT the issue (920W ≫ ~500W load); this is about failover + isolating a
+        flaky single unit, not watts.
 - [ ] Reseat: PSU connectors, ATX 24-pin + EPS 8-pin, all SATA power splitters.
-- [ ] Read `log/thermal.log` IPMI `volts=[]` rows during a sync: any 12V/5V/3.3V rail
-      sagging out of range under load is the smoking gun.
+- [ ] **IPMI voltage telemetry is dead** — every rail reads "No Reading", so you CANNOT
+      diagnose this from logs. Use a **multimeter / PSU load tester** on the 12V/5V/3.3V
+      rails under load (kick off a snapraid sync while measuring).
 - [ ] Load-test or swap the PSU. With 11+ data + 3 parity drives spinning up under
       snapraid, peak draw is high; a degraded PSU sags. **Strongly consider a fresh PSU**
       regardless — cheap relative to the outages.
