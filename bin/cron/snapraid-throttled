@@ -1,0 +1,43 @@
+#!/bin/bash
+# snapraid-throttled — run snapraid with reduced CPU power/heat + low I/O priority.
+#
+# Added 2026-06-15 (hang investigation). lafayette freezes during the 01:00 snapraid
+# window; leading suspects are power-delivery sag and thermal, both load-driven. This
+# caps the CPU (the biggest swing in system watts/heat) for the DURATION of the snapraid
+# run only, then restores it on exit — so it shaves the peak that correlates with the
+# freezes without touching Plex transcode performance the rest of the day.
+#
+# Reversible: revert the call sites in snapraid_daily / snapraid_weekly back to
+# /usr/local/bin/snapraid and delete this file. See docs/hang-investigation-2026-06-15.md.
+
+# NOTE: deliberately NOT using `set -e` — we must always restore CPU state on exit and
+# return snapraid's real exit code (the callers depend on it for alerting).
+set -uo pipefail
+
+SNAPRAID=/usr/local/bin/snapraid
+CAP_KHZ=1800000                 # cap to 1.8 GHz (base is 2.5) during the run
+NOTURBO=/sys/devices/system/cpu/intel_pstate/no_turbo
+MAXFREQ_GLOB=/sys/devices/system/cpu/cpu*/cpufreq/scaling_max_freq
+
+# --- save current state so we can restore exactly ---
+ORIG_NOTURBO=""
+[[ -w "$NOTURBO" ]] && ORIG_NOTURBO="$(cat "$NOTURBO" 2>/dev/null)"
+ORIG_MAXFREQ=""
+for f in $MAXFREQ_GLOB; do ORIG_MAXFREQ="$(cat "$f" 2>/dev/null)"; break; done
+
+restore() {
+    # Best-effort restore; runs on normal exit, timeout SIGTERM, or Ctrl-C.
+    [[ -n "$ORIG_NOTURBO" && -w "$NOTURBO" ]] && echo "$ORIG_NOTURBO" > "$NOTURBO" 2>/dev/null
+    if [[ -n "$ORIG_MAXFREQ" ]]; then
+        for f in $MAXFREQ_GLOB; do echo "$ORIG_MAXFREQ" > "$f" 2>/dev/null; done
+    fi
+}
+trap restore EXIT INT TERM
+
+# --- apply the cap ---
+[[ -w "$NOTURBO" ]] && echo 1 > "$NOTURBO" 2>/dev/null          # disable turbo
+for f in $MAXFREQ_GLOB; do echo "$CAP_KHZ" > "$f" 2>/dev/null; done
+
+# --- run snapraid de-prioritised (nice + best-effort-lowest I/O class) ---
+nice -n 19 ionice -c2 -n7 "$SNAPRAID" "$@"
+exit $?

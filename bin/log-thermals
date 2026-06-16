@@ -1,0 +1,68 @@
+#!/usr/bin/env bash
+# log-thermals — lightweight thermal/power/load sampler.
+#
+# Added 2026-06-15 during hang investigation (docs/hang-investigation-2026-06-15.md).
+# Purpose: the server freezes during sustained-load windows (01:00 snapraid sync,
+# morning backups) with NO surviving evidence. We have no temperature or voltage
+# history, so we can't tell whether the freeze is thermal- or power-delivery-driven.
+# This samples cheap CPU temps + load every minute (coretemp = MSR/PCI, no i2c), and
+# IPMI voltages / PSU status / board temps every 5th minute (KCS bus, kept sparse to
+# avoid hammering the quirky BMC). Appends one CSV row per run to log/thermal.log.
+#
+# The last row written before a freeze is the diagnostic payload: if temps were
+# climbing toward crit (91C) -> thermal. If a PSU/voltage sensor went out of range or
+# load spiked with no temp change -> power delivery. Either way the next hang is no
+# longer a black box.
+#
+# Remove by deleting the crontab line and this file. Pure evidence-gathering; it
+# changes nothing about how the system runs.
+
+set -uo pipefail
+
+LOG=/willflix/log/thermal.log
+ts="$(date '+%Y-%m-%dT%H:%M:%S%z')"
+min="$(date '+%-M')"
+
+# --- load average (1m, 5m) ---
+read -r l1 l5 _ </proc/loadavg
+
+# --- CPU temps via coretemp (no i2c) ---
+# Max package temp and max core temp across both sockets.
+pkgmax="" coremax=""
+if command -v sensors >/dev/null 2>&1; then
+  read -r pkgmax coremax < <(
+    sensors -u 2>/dev/null | awk '
+      # Track the current chip + feature. Restrict strictly to coretemp so the
+      # nct7904 board sensors (loc1, etc.) never contaminate CPU readings.
+      /^[^[:space:]]/ && $0 !~ /:/    { inchip=($0 ~ /^coretemp/); feat=""; next }  # chip header (no colon)
+      /^[^[:space:]].*:[[:space:]]*$/ { feat=$0; next }   # feature header (ends with :)
+      inchip && /_input:/ {
+        v=$2+0
+        if (v>0 && v<120) {
+          if (feat ~ /Package/) { if (v>pm) pm=v } else { if (v>cm) cm=v }
+        }
+      }
+      END { printf "%.0f %.0f", pm, cm }
+    '
+  )
+fi
+
+# --- periodic IPMI block (every 5 min): voltages, PSU, board temps, power draw ---
+ipmi=""
+if (( min % 5 == 0 )) && command -v ipmitool >/dev/null 2>&1; then
+  # voltages out of nominal, PSU status, system/peripheral temps
+  volts="$(ipmitool sdr type Voltage 2>/dev/null \
+            | awk -F'|' '{gsub(/ /,"",$1); gsub(/^ +| +$/,"",$5); printf "%s=%s;", $1, $5}')"
+  psu="$(ipmitool sdr type 'Power Supply' 2>/dev/null \
+            | awk -F'|' '{gsub(/^ +| +$/,"",$1); gsub(/^ +| +$/,"",$4); printf "%s=%s;", $1, $4}')"
+  systmp="$(ipmitool sdr type Temperature 2>/dev/null \
+            | awk -F'|' '/System|Peripheral|PCH/{gsub(/^ +| +$/,"",$1); gsub(/^ +| +$/,"",$5); printf "%s=%s;", $1, $5}')"
+  watts="$(ipmitool dcmi power reading 2>/dev/null | awk -F: '/Instantaneous/{gsub(/^ +| +$/,"",$2); print $2}')"
+  ipmi="volts=[${volts}] psu=[${psu}] temps=[${systmp}] watts=[${watts}]"
+fi
+
+# write header once
+if [[ ! -s "$LOG" ]]; then
+  echo "# ts,load1,load5,cpu_pkg_max_C,cpu_core_max_C,ipmi_block(every5min)" >>"$LOG"
+fi
+printf '%s,%s,%s,%s,%s,%s\n' "$ts" "$l1" "$l5" "${pkgmax:-NA}" "${coremax:-NA}" "$ipmi" >>"$LOG"

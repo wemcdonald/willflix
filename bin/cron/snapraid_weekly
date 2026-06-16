@@ -13,7 +13,7 @@ LOGFILE="/var/log/snapraid-daily.log"
 
 echo "$(date): Starting snapraid scrub" >> "$LOGFILE"
 
-if ! timeout "$SCRUB_TIMEOUT" /usr/local/bin/snapraid scrub >> "$LOGFILE" 2>&1; then
+if ! timeout "$SCRUB_TIMEOUT" /willflix/bin/cron/snapraid-throttled scrub >> "$LOGFILE" 2>&1; then
     EXIT_CODE=$?
     echo "$(date): snapraid scrub failed (exit $EXIT_CODE)" >> "$LOGFILE"
     "$NOTIFY" --severity CRITICAL --key "snapraid-weekly-fail" \

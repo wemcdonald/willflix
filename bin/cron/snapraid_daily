@@ -32,7 +32,7 @@ fi
 echo "$(date): check_media_changes passed, starting sync" >> "$LOGFILE"
 
 # sync with timeout
-if ! timeout "$SYNC_TIMEOUT" /usr/local/bin/snapraid --force-zero sync >> "$LOGFILE" 2>&1; then
+if ! timeout "$SYNC_TIMEOUT" /willflix/bin/cron/snapraid-throttled --force-zero sync >> "$LOGFILE" 2>&1; then
     EXIT_CODE=$?
     if [ "$EXIT_CODE" -eq 124 ]; then
         notify_failure "snapraid sync timed out after ${SYNC_TIMEOUT}s"

@@ -1,5 +1,19 @@
 MAILTO=will
 
+# TEMPORARY (added 2026-06-15, hang investigation): sample CPU temp/load every
+# minute + IPMI voltages/PSU every 5 min, to catch what the next freeze looks like
+# under load. NOT wrapped in willflix-cron (raw sampler, no alerting/freshness needed).
+# Remove this line + /willflix/bin/log-thermals once the hang cause is confirmed.
+# See docs/hang-investigation-2026-06-15.md.
+* * * * * /willflix/bin/log-thermals
+
+# TEMPORARY (added 2026-06-15, hardware sizing): sample Plex transcode count vs
+# CPU + transcode-ramdisk high-water-mark every 2 min, to size a replacement
+# MB/CPU/RAM. Raw sampler (no willflix-cron wrapper) — writes its own CSV to
+# /willflix/log/plex-capacity/. Remove this line once the new hardware is chosen.
+# See docs/hardware-sizing-2026-06.md.
+*/2 * * * * /willflix/bin/cron/log_plex_capacity
+
 # Snapraid - daily sync (Mon-Sat 1am), weekly sync+scrub (Sun 1am)
 0 1 * * 0 /willflix/bin/willflix-cron --timeout 50400 snapraid_weekly
 0 1 * * 1-6 /willflix/bin/willflix-cron snapraid_daily
