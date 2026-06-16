@@ -1,0 +1,96 @@
+#!/bin/bash
+# log_plex_capacity - sample real Plex/system capacity usage for hardware sizing.
+#
+# Captures the things Tautulli and sar can't show directly:
+#   - instantaneous active transcode count (Plex Transcoder processes)
+#   - system CPU% AT THAT MOMENT (so we can correlate transcodes -> CPU cost)
+#   - transcode ramdisk usage + an all-time high-water-mark
+#   - RAM used
+#
+# Appends one CSV row per run to a PERSISTENT file (not the weekly-rotated *.log),
+# and maintains all-time peaks in a state file. Designed to run frequently
+# (every 1-2 min) so transient transcode spikes are actually captured.
+#
+# Exit-code contract (see CLAUDE.md): exit 0 = ran fine. Non-zero = script broke.
+# This is a passive collector; it does NOT alert.
+
+set -uo pipefail
+
+DATA_DIR="/willflix/log/plex-capacity"
+CSV="$DATA_DIR/metrics.csv"
+PEAKS="$DATA_DIR/peaks.txt"
+RAMDISK="/Volumes/PlexTranscode"
+
+mkdir -p "$DATA_DIR"
+
+# --- instantaneous CPU% over a short window (no deps; reads /proc/stat) ---
+read_cpu_busy() {
+    # prints: total idle  (jiffies)
+    awk '/^cpu /{idle=$5+$6; total=0; for(i=2;i<=NF;i++) total+=$i; print total, idle}' /proc/stat
+}
+read t1 i1 < <(read_cpu_busy)
+sleep 3
+read t2 i2 < <(read_cpu_busy)
+dt=$(( t2 - t1 )); di=$(( i2 - i1 ))
+if [ "$dt" -gt 0 ]; then
+    CPU_PCT=$(awk -v dt="$dt" -v di="$di" 'BEGIN{printf "%.1f", (1 - di/dt) * 100}')
+else
+    CPU_PCT="0.0"
+fi
+
+# --- load average (1 min) ---
+LOAD1=$(awk '{print $1}' /proc/loadavg)
+
+# --- RAM used (MB) ---
+MEM_USED_MB=$(free -m | awk '/^Mem:/{print $3}')
+
+# --- active Plex transcodes: count "Plex Transcoder" processes (token-free) ---
+# Each active (video or audio) transcode session spawns a Plex Transcoder process.
+# pgrep -c prints "0" AND exits 1 on no match, so don't use `|| echo 0` (double value).
+TRANSCODERS=$(pgrep -fc 'Plex Transcoder' 2>/dev/null | head -1)
+TRANSCODERS=${TRANSCODERS:-0}
+
+# --- transcode ramdisk usage (MB + percent) ---
+if mountpoint -q "$RAMDISK" 2>/dev/null; then
+    read RAM_USED_MB RAM_PCT < <(df -BM --output=used,pcent "$RAMDISK" 2>/dev/null | awk 'NR==2{gsub(/[M%]/,"",$1); gsub(/%/,"",$2); print $1, $2}')
+else
+    RAM_USED_MB=0; RAM_PCT=0
+fi
+RAM_USED_MB=${RAM_USED_MB:-0}; RAM_PCT=${RAM_PCT:-0}
+
+EPOCH=$(date +%s)
+ISO=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+
+# --- write CSV (header once) ---
+if [ ! -f "$CSV" ]; then
+    echo "epoch,iso,cpu_pct,load1,mem_used_mb,transcoders,ramdisk_used_mb,ramdisk_pct" > "$CSV"
+fi
+echo "${EPOCH},${ISO},${CPU_PCT},${LOAD1},${MEM_USED_MB},${TRANSCODERS},${RAM_USED_MB},${RAM_PCT}" >> "$CSV"
+
+# --- maintain all-time peaks ---
+# peaks.txt holds: max_transcoders, max_ramdisk_mb, max_cpu_pct, max_cpu_when_transcoding
+declare -A P=( [max_transcoders]=0 [max_ramdisk_mb]=0 [max_cpu]=0 [max_cpu_txc]=0 )
+if [ -f "$PEAKS" ]; then
+    while IFS='=' read -r k v; do [ -n "${k:-}" ] && P[$k]=$v; done < "$PEAKS"
+fi
+awk_gt() { awk -v a="$1" -v b="$2" 'BEGIN{exit !(a>b)}'; }
+
+(( TRANSCODERS > ${P[max_transcoders]:-0} )) && P[max_transcoders]=$TRANSCODERS
+(( RAM_USED_MB  > ${P[max_ramdisk_mb]:-0} )) && P[max_ramdisk_mb]=$RAM_USED_MB
+awk_gt "$CPU_PCT" "${P[max_cpu]:-0}" && P[max_cpu]=$CPU_PCT
+# peak CPU recorded only while at least one transcode was active
+if (( TRANSCODERS > 0 )) && awk_gt "$CPU_PCT" "${P[max_cpu_txc]:-0}"; then
+    P[max_cpu_txc]=$CPU_PCT
+fi
+{
+    echo "max_transcoders=${P[max_transcoders]}"
+    echo "max_ramdisk_mb=${P[max_ramdisk_mb]}"
+    echo "max_cpu=${P[max_cpu]}"
+    echo "max_cpu_txc=${P[max_cpu_txc]}"
+    echo "updated=${ISO}"
+} > "$PEAKS"
+
+# one-line summary to stdout (willflix-cron only surfaces this on non-zero exit)
+echo "transcoders=${TRANSCODERS} cpu=${CPU_PCT}% load1=${LOAD1} ramdisk=${RAM_USED_MB}MB/${RAM_PCT}% | peaks: txc=${P[max_transcoders]} ramdisk=${P[max_ramdisk_mb]}MB cpu_while_txc=${P[max_cpu_txc]}%"
+
+exit 0
