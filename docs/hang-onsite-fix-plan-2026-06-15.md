@@ -23,7 +23,21 @@ dead-power-button symptom (a power/board wedge takes the BMC down with it).
 - [ ] Pull the latest `log/thermal.log` and grep the 00:55–01:15 rows after the next
       sync; that likely tells you thermal-vs-power before you even open the case.
 
-## Step 1 — Make the watchdog actually work (recovery)
+## Step 1 — Recovery (REVISED 2026-06-16 after failed 4-sec force-off)
+
+**Primary recovery is now an EXTERNAL AC power controller, not a watchdog.** During a hang
+even a 4-second power-button hold fails — the BMC/control plane dies with the system, and
+only disconnecting AC recovers it. Therefore:
+- [ ] **Install a networked/switched PDU or smart outlet** on lafayette's AC, with a
+      **ping/heartbeat watchdog from another always-on host**: no response for N minutes →
+      cut AC and restore. This is the ONLY recovery that matches "only pulling AC works."
+- [ ] The **BMC IPMI watchdog below is now LOW priority** — if the BMC wedges (which the
+      failed force-off shows it does), its watchdog can't fire, same as softdog/nct7904.
+      Still worth setting up as a secondary for OS-only hangs, but do not rely on it.
+- [ ] Also update **BMC firmware** (3.48, old) and investigate the flaky `nct7904`/i2c
+      sensor path as a possible BMC-hang trigger (see Step 6 / Step 3).
+
+### Step 1b — IPMI/softdog watchdog (secondary, was Step 1)
 Root finding: `softdog` is **deny-listed by Ubuntu's stock HWE blacklist**
 (`/usr/lib/modprobe.d/blacklist_linux-hwe-6.8_*.conf`) so it has never loaded since
 May 8. And the kernel **IPMI watchdog can't register** because `nct7904` already owns the
@@ -73,6 +87,9 @@ this and exposed a concrete lead.
 - [ ] **IPMI voltage telemetry is dead** — every rail reads "No Reading", so you CANNOT
       diagnose this from logs. Use a **multimeter / PSU load tester** on the 12V/5V/3.3V
       rails under load (kick off a snapraid sync while measuring).
+- [ ] **Measure the +5VSB standby rail specifically.** The failed 4-sec force-off points at
+      a standby/control-plane collapse; a sagging 5VSB (aging-cap failure in the PSU standby
+      section) would take down both the OS and the BMC. This is now a prime physical check.
 - [ ] Load-test or swap the PSU. With 11+ data + 3 parity drives spinning up under
       snapraid, peak draw is high; a degraded PSU sags. **Strongly consider a fresh PSU**
       regardless — cheap relative to the outages.

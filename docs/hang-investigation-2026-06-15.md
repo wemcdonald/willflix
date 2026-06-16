@@ -68,6 +68,31 @@ but if the box **still freezes while throttled**, that's strongly informative (p
 from a simple raw-load → power/heat threshold). If freezes stop, load is confirmed as the
 trigger. Either outcome advances the diagnosis.
 
+## 2026-06-16 — KEY: 4-second force-off also fails
+
+Confirmed with owner: during a hang, **even a 4-second power-button hold does not power
+the box off** — only physically disconnecting AC recovers it. The 4-sec force-off is
+handled by the BMC / board power-sequencing on **standby power (5VSB), independent of the
+CPU/OS**. So whatever kills the system **also kills the BMC/control plane** — they share
+fate, and only a full AC/standby reset clears it.
+
+**This re-ranks everything:**
+- **Down (BMC survives these on standby and would force-off):** bad DIMM ~5–10%, storage
+  controller / CPU lockup ~5–10% each, kernel/software ~nil.
+- **Up (take OS + BMC down together):** standby/5VSB power collapse (failing PSU standby
+  section or board — classic aging-cap failure), i2c-bus deadlock hanging the BMC (the
+  nct7904 sensor bus is known-flaky and the BMC masters it), or board-level latch-up.
+- Combined power/control-plane: **~75–85%**. PSU-module swap actually fixes it **~30–35%**.
+  BMC/board control-plane (incl. i2c-induced BMC hang, FW 3.48) **~20–30%**.
+
+**Consequence for recovery — the BMC watchdog plan is likely useless here.** If the BMC
+wedges, its own watchdog can't fire (same reason softdog/nct7904 can't). The only recovery
+that fits "only AC removal works" is **external AC power control**: a networked/switched
+**PDU or smart outlet** driven by a ping/heartbeat watchdog from another always-on host —
+no ping for N minutes → cut + restore AC. This supersedes Step 1 of the on-site runbook as
+the recovery mechanism. Restoring the redundant PSU still helps a standby-rail fault (5VSB
+outputs are diode-OR'd → standby gets redundancy too).
+
 ## Overnight 2026-06-16 — first data after changes
 
 Ran the (now throttled) 01:00 `snapraid_daily` sync; box **did not freeze** (up 21h).
