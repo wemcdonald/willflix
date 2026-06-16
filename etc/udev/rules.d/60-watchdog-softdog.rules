@@ -1,0 +1,1 @@
+KERNEL=="watchdog*", ATTR{identity}=="Software Watchdog", SYMLINK+="softdog"

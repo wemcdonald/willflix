@@ -274,6 +274,30 @@ stage_6_configs() {
         info "sysctl.d drop-ins symlinked and loaded"
     fi
 
+    # modules-load.d drop-ins
+    if [[ -d "$REPO_DIR/etc/modules-load.d" ]]; then
+        for conf in "$REPO_DIR/etc/modules-load.d/"*.conf; do
+            [[ -f "$conf" ]] || continue
+            ln -sfn "$conf" "/etc/modules-load.d/$(basename "$conf")"
+            while read -r mod; do
+                [[ -z "$mod" || "$mod" == \#* ]] && continue
+                modprobe "$mod" 2>/dev/null || true
+            done < "$conf"
+        done
+        info "modules-load.d drop-ins symlinked and loaded"
+    fi
+
+    # udev rules
+    if [[ -d "$REPO_DIR/etc/udev/rules.d" ]]; then
+        for rule in "$REPO_DIR/etc/udev/rules.d/"*.rules; do
+            [[ -f "$rule" ]] || continue
+            ln -sfn "$rule" "/etc/udev/rules.d/$(basename "$rule")"
+        done
+        udevadm control --reload &>/dev/null
+        udevadm trigger --subsystem-match=watchdog --action=change &>/dev/null || true
+        info "udev rules symlinked and reloaded"
+    fi
+
     # Systemd units
     local count=0
     for unit in "$REPO_DIR/etc/systemd/"*.service; do
