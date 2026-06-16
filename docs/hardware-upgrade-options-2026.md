@@ -39,15 +39,15 @@ on this build. This pushes hard toward a DDR4 LGA1700 board.
 
 ## Shared component: PSU (applies to all options below)
 
-The 14-drive array — not the CPU — drives PSU sizing, and the hang investigation
+**Decided: be quiet! Straight Power 12 850W 80+ Platinum (BN515)** — already owned, $0 added.
+The 14-drive array (not the CPU) drives PSU sizing, and the hang investigation
 (`hang-onsite-fix-plan-2026-06-15.md`) points at **power sag under peak drive load** as the
 likely freeze cause, so this is reliability-critical. Budget: ~250W steady, ~460–480W spin-up
-surge (~28–35A on +12V from drives alone).
-- **Minimum: 550W 80+ Gold, single +12V rail.**
-- **Recommended: 650W 80+ Gold** (~$90–120; Seasonic/Corsair RM/be quiet) — headroom for more drives.
-- Single 12V rail (avoids per-rail OCP trip on spin-up); enable **staggered spin-up on the HBA**.
-- Quality > wattage; don't overbuy 850W+ (inefficient at ~250W load).
-- Add ~$90–120 to every total below. Full reasoning in `hardware-sizing-2026-06.md`.
+surge (~28–35A on +12V). The 850W Platinum unit (~70A single +12V rail) covers this with
+huge margin; over-spec but fine — Platinum low-load efficiency penalty is ~1–3%, and it's
+already owned. Verify enough SATA power leads for 14 drives; enable staggered HBA spin-up.
+Full reasoning in `hardware-sizing-2026-06.md`. (Had none been on hand: 550W min / 650W
+80+ Gold recommended — the 850W exceeds both, so **add $0** to the totals below.)
 
 ## BUILD OPTIONS
 

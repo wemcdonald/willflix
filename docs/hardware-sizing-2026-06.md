@@ -82,18 +82,24 @@ Two sizing drivers:
 - **Simultaneous spin-up surge** is the real event — ~28–35A on +12V from drives alone.
   This is the exact "peak multi-drive load" the hang plan blames; a tired 14-yr-old PSU sags here.
 
-**Recommendation:**
-- **Minimum: 550W, 80+ Gold, single +12V rail** (~45A on 12V; efficient at steady load).
-- **Recommended: 650W 80+ Gold** (~54A on 12V; room for 2–4 more drives). ~$90–120
-  (Seasonic / Corsair RM / be quiet).
-- Don't go below 550W; don't overbuy 850W+ (inefficient at ~250W load).
-- **Single 12V rail** for many-drive builds (avoids per-rail OCP tripping on spin-up).
-- **Enable staggered spin-up on the HBA** — turns the surge into a non-event; cheapest reliability win.
-- Quality > wattage: the hangs suggest a *degraded* PSU, so a fresh Gold unit with a strong
-  single 12V rail addresses the suspected root cause independent of the platform swap.
+**Decided: be quiet! Straight Power 12 850W 80+ Platinum (BN515)** — already owned.
+This is over-spec'd for the ~250W load, which is *fine*: at 80+ Platinum the low-load
+efficiency penalty is ~1–3% (fan stays off/near-silent), and the ~70A single +12V rail
+gives enormous surge headroom over the ~35A drive spin-up, with room for many more drives.
+It directly kills the suspected hang cause (power sag) with huge margin. Since it's already
+owned, the only real downside of oversizing (cost) doesn't apply.
 
-Caveat: assumes ~8W idle / ~24W spin-up consumer drives. If any are 7200rpm enterprise units
-(~12W idle / ~30W spin-up), prefer the 650W pick. Drive models not yet confirmed.
+Sizing context (why 850W Platinum comfortably covers it):
+- Steady ~250W ≈ 29% load — well inside the efficient band for a Platinum unit.
+- Spin-up surge ~28–35A on +12V vs ~70A available — trivial.
+
+Verify (not concerns):
+- **Enough SATA power leads for 14 drives** — use included cables + sane splitters; don't
+  daisy-chain too many drives per lead (spin-up current).
+- **Enable staggered spin-up on the HBA** — defense-in-depth; this PSU doesn't need it.
+
+(For reference, had a PSU not been on hand: minimum 550W / recommended 650W 80+ Gold,
+single +12V rail. The 850W Platinum exceeds both.)
 
 ## Instrumentation added (to confirm transients before buying)
 

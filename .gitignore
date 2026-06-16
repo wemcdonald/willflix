@@ -12,6 +12,8 @@ docker/secrets
 # Build artifacts
 *.log
 *.tmp
+# Runtime capacity-sampler data (log_plex_capacity)
+log/plex-capacity/
 *.swp
 *~
 *.pyc
