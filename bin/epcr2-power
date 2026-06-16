@@ -1,0 +1,100 @@
+#!/usr/bin/env bash
+# epcr2-power — control a Digital Loggers EPCR2 (Ethernet Power Controller II) via its
+# REST API. Meant to run on the PiKVM (which has Tailscale), so you can check or toggle
+# lafayette's power even when lafayette itself is hung. DO NOT run this on lafayette —
+# it would be dead when you need it.
+#
+# Setup (on PiKVM):
+#   mkdir -p ~/.config/epcr2 && chmod 700 ~/.config/epcr2
+#   cat > ~/.config/epcr2/config <<'EOF'
+#   EPCR2_HOST=192.168.x.x          # static IP / DHCP reservation of the EPCR2
+#   EPCR2_USER=admin
+#   EPCR2_PASS=changeme             # the password you set (NOT the default 1234)
+#   EPCR2_SERVER_OUTLETS="1 2"      # UI outlet #s feeding lafayette's PSU(s)
+#   EPCR2_NUM_OUTLETS=8
+#   EPCR2_OFF_SECS=30               # off-time on a cycle: drains standby (5VSB) so the
+#                                   # board/BMC fully resets — the whole point for our hang
+#   EOF
+#   chmod 600 ~/.config/epcr2/config
+#
+# Usage:
+#   epcr2-power status                 # show all outlet states
+#   epcr2-power on   <N|all>           # N = UI outlet number (1-based)
+#   epcr2-power off  <N|all>
+#   epcr2-power cycle <N|all> [secs]   # off, wait secs, on
+#   epcr2-power server                 # cycle ALL EPCR2_SERVER_OUTLETS together = full
+#                                      # AC reset of lafayette (both PSU feeds at once)
+#
+# Notes:
+#  - Web UI labels outlets 1..N; the REST API is 0-based. This script takes 1-based
+#    numbers (matching the UI) and converts internally.
+#  - PUT requires digest auth + the "X-CSRF: x" header (a DLI requirement).
+#  - Ref: https://www.digital-loggers.com/rest.html
+
+set -uo pipefail
+
+CONF="${EPCR2_CONFIG:-$HOME/.config/epcr2/config}"
+# shellcheck disable=SC1090
+[[ -r "$CONF" ]] && . "$CONF"
+: "${EPCR2_HOST:?set EPCR2_HOST in $CONF or the environment}"
+: "${EPCR2_USER:=admin}"
+: "${EPCR2_PASS:?set EPCR2_PASS in $CONF or the environment}"
+: "${EPCR2_NUM_OUTLETS:=8}"
+: "${EPCR2_OFF_SECS:=30}"
+
+base="http://${EPCR2_HOST}/restapi/relay/outlets"
+auth=(--digest -u "${EPCR2_USER}:${EPCR2_PASS}")
+
+api_get() { curl -fsS --max-time 15 "${auth[@]}" "$1"; }
+api_put() { curl -fsS --max-time 15 "${auth[@]}" -H "X-CSRF: x" -X PUT --data "$2" "$1" >/dev/null; }
+
+set_state() {  # $1 = 1-based outlet, $2 = true|false
+  local idx=$(( $1 - 1 ))
+  if api_put "${base}/${idx}/state/" "value=$2"; then
+    echo "  outlet $1 -> $2"
+  else
+    echo "  outlet $1: FAILED" >&2; return 1
+  fi
+}
+
+status() {
+  local json
+  json="$(api_get "${base}/all;/state/")" || { echo "status query failed (is $EPCR2_HOST reachable?)" >&2; return 1; }
+  json="${json//[/}"; json="${json//]/}"
+  local i=1 s; IFS=',' read -ra arr <<< "$json"
+  for s in "${arr[@]}"; do
+    s="${s//[[:space:]]/}"
+    printf "  outlet %d: %s\n" "$i" "$([[ $s == true ]] && echo ON || echo OFF)"
+    ((i++))
+  done
+}
+
+cycle() {  # $1 = 1-based outlet, $2 = off secs (optional)
+  set_state "$1" false || return 1
+  sleep "${2:-$EPCR2_OFF_SECS}"
+  set_state "$1" true
+}
+
+each() {  # run a function over "all" or a single outlet: each <fn> <N|all> [extra...]
+  local fn="$1" target="$2"; shift 2
+  if [[ "$target" == all ]]; then
+    local o; for ((o=1; o<=EPCR2_NUM_OUTLETS; o++)); do "$fn" "$o" "$@"; done
+  else
+    "$fn" "$target" "$@"
+  fi
+}
+
+cmd="${1:-status}"; shift || true
+case "$cmd" in
+  status) status ;;
+  on)    each set_state "${1:?outlet # or 'all'}" true ;;
+  off)   each set_state "${1:?outlet # or 'all'}" false ;;
+  cycle) each cycle    "${1:?outlet # or 'all'}" "${2:-}" ;;
+  server)
+    : "${EPCR2_SERVER_OUTLETS:?set EPCR2_SERVER_OUTLETS in $CONF}"
+    echo "Full AC reset of lafayette: outlets [$EPCR2_SERVER_OUTLETS], off ${EPCR2_OFF_SECS}s"
+    for o in $EPCR2_SERVER_OUTLETS; do set_state "$o" false; done
+    sleep "$EPCR2_OFF_SECS"
+    for o in $EPCR2_SERVER_OUTLETS; do set_state "$o" true; done ;;
+  *) echo "usage: epcr2-power {status | on N|all | off N|all | cycle N|all [secs] | server}" >&2; exit 2 ;;
+esac
