@@ -90,6 +90,16 @@ this and exposed a concrete lead.
 - [ ] **Measure the +5VSB standby rail specifically.** The failed 4-sec force-off points at
       a standby/control-plane collapse; a sagging 5VSB (aging-cap failure in the PSU standby
       section) would take down both the OS and the BMC. This is now a prime physical check.
+- [ ] **2026-06-18 refinement — it's the DISK-ACTIVITY ONSET, not CPU.** The box froze again
+      ~3 min into the 01:00 snapraid run with CPU throttled, load only ~3.0, temps flat. The
+      trigger is drives spinning up + initial multi-drive reads → a **12 V spin-up inrush**
+      (~250–340 W) on the single PSU. The matched 1200 W pair directly addresses this (2× 12 V
+      headroom). When measuring, watch the **+12 V rail at the moment snapraid wakes the
+      drives** (`sudo /willflix/bin/cron/snapraid_daily`).
+- [ ] **Already running (no case needed):** spin-down disabled on all SATA HDDs so the 01:00
+      run no longer mass-spins-up the array (isolation test). Permanent fix if confirmed:
+      enable **staggered drive spin-up** on the SAS backplane/HBA, or keep the no-spindown
+      rule. (`etc/udev/rules.d/69-hdparm-nospindown.rules`.)
 - [ ] Load-test or swap the PSU. With 11+ data + 3 parity drives spinning up under
       snapraid, peak draw is high; a degraded PSU sags. **Strongly consider a fresh PSU**
       regardless — cheap relative to the outages.

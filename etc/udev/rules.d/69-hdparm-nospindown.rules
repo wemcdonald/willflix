@@ -1,0 +1,8 @@
+# TEMPORARY (2026-06-18, hang investigation): keep all SATA HDDs spinning so the 01:00
+# snapraid run does NOT trigger a mass simultaneous drive spin-up. The box froze 3 of its
+# last crashes ~3 min into the 01:00 snapraid sync, with CPU throttled and temps flat —
+# pointing at the disk-activity onset (suspected 12V spin-up inrush sagging the single PSU).
+# Keeping drives spun up isolates that: if freezes stop, it's the spin-up transient.
+# ID_BUS=="ata" excludes the USB card reader (sdp). Remove once the cause is confirmed.
+# See docs/hang-investigation-2026-06-15.md.
+ACTION=="add|change", KERNEL=="sd[a-z]", ENV{ID_BUS}=="ata", RUN+="/usr/sbin/hdparm -S 0 -B 254 /dev/%k"

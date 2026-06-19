@@ -68,6 +68,40 @@ but if the box **still freezes while throttled**, that's strongly informative (p
 from a simple raw-load → power/heat threshold). If freezes stop, load is confirmed as the
 trigger. Either outcome advances the diagnosis.
 
+## 2026-06-18 — froze AGAIN; throttle didn't help; trigger = disk-onset
+
+Froze **01:03:31**, ~2.5 days uptime; manual restart 16:25. **Third crash at ~01:03–01:12**
+— squarely in the 01:00 `snapraid_daily` window (also May 21, Jun 15). thermal.log:
+
+```
+01:00 load 0.77 temp 39   01:02 load 2.02 temp 40
+01:01 load 1.53 temp 39   01:03 load 3.02 temp 41  <- last sample, dead ~30s later
+```
+
+- **CPU throttle did NOT prevent it, and load was only ~3.0 (just ramping) with temps flat
+  39–41 °C.** So it is NOT CPU power, NOT sustained load, NOT thermal — confirmed dead.
+- It froze at the **onset of disk activity** — snapraid spinning up idle drives + starting
+  to read all of them. New lead hypothesis: **drive spin-up power transient** (11–14 drives
+  drawing ~2 A each on 12 V simultaneously ≈ 250–340 W inrush) sagging the single PSU; or a
+  SATA/SAS controller/backplane fault on I/O onset.
+- **SEL (first crash since the 06-15 clear) captured nothing useful** — a timestamp-less
+  "Pre-Init Unknown #0xff" marker (weakly corroborates a board power event) + the restart's
+  chassis-intrusion. No PSU/voltage event **because the BMC voltage sensors are dead, so it
+  literally can't log a sag.** BMC clock was UTC; set to local 06-18 for future correlation.
+
+### Mitigation/test running (no case-open needed)
+Disabled spin-down on all SATA HDDs (`hdparm -S 0 -B 254`, live + persistent udev rule
+`etc/udev/rules.d/69-hdparm-nospindown.rules`) so the 01:00 run no longer triggers a mass
+simultaneous spin-up. **If freezes stop → spin-up transient confirmed. If it still freezes →
+points at sustained multi-drive I/O / controller, not spin-up.** Either way, isolating.
+
+### Hypothesis ranking (post-06-18)
+1. **Power delivery at disk-activity onset** — spin-up 12 V inrush on a single aging PSU.
+   Restore the matched 1200 W redundant pair (2× headroom + failover) = top on-site action.
+2. **SATA/SAS controller / backplane / HBA fault** on I/O onset.
+3. **Bad DIMM** (EDAC blind) — memtest on-site.
+4. ~~CPU / thermal / sustained load~~ — ruled out (throttled + flat temps + low load).
+
 ## 2026-06-16 — KEY: 4-second force-off also fails
 
 Confirmed with owner: during a hang, **even a 4-second power-button hold does not power
