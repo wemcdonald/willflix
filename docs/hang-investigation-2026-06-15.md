@@ -68,6 +68,39 @@ but if the box **still freezes while throttled**, that's strongly informative (p
 from a simple raw-load → power/heat threshold). If freezes stop, load is confirmed as the
 trigger. Either outcome advances the diagnosis.
 
+## 2026-06-19 — root SSD SATA dropout (a DIFFERENT failure mode); EDAC now works
+
+The 06-18 18:59 event was **not** a classic total freeze. Owner clarified: **SSH still
+worked, but every command failed with disk errors** → kernel + network stayed alive while
+the **root SSD dropped off the SATA bus**. Journald stopped at 18:59 because it couldn't
+write to an erroring root. Appeared ~2.5h after the PSU swap (done at the ~14:00/16:25 Jun 18
+reboot). This is a SEPARATE failure mode from the total freezes (where SSH is dead).
+
+Evidence (root SSD = Samsung 860 EVO on `ata4`, a native onboard **3 Gbps** port — so the
+3.0 Gb/s link is normal, NOT a downshift; the 6 Gbps ports came up at 6.0):
+- SMART healthy: PASSED, 0 reallocated/pending/uncorrectable, 0 lifetime CRC; error log clean.
+- **SATA PHY log: 2× PhyRdy→PhyNRdy + 2× COMRESET, 0 CRC/R_ERR** → the link went down
+  *cleanly* (no signal corruption). A bad DATA cable shows CRC errors; a clean link-loss
+  points at **power or a physical connection** → most likely the **new PSU's SATA power lead
+  or a connector disturbed in the swap**.
+- Caveat: PHY counters are lifetime, not timestamped (2 drops total) — suggestive, not proof;
+  the real errors were lost when root went unwritable.
+
+**Action:** reseat the SSD's SATA data + power, use a different SATA power lead off the new
+PSU, ideally a known-good data cable. PHY baseline to re-check later: PhyRdy→PhyNRdy=2,
+COMRESET=2 — if these climb, the link is still dropping (→ suspect SATA power lead or the
+onboard controller).
+
+**Also note:** snapraid was disabled yet the box still had problems → snapraid was never the
+cause (01:00 clustering was coincidental). And **EDAC now BINDS** (`sb_edac` registered both
+controllers; was failing on 06-15) → ECC memory errors are finally observable → rasdaemon.
+
+**Two distinct problems now:**
+1. Recurring **total freezes** (SSH dead, BMC dead) — board/VRM/CPU or bad DIMM; top
+   diagnostic **memtest86+** (on-site) + reseat RAM; **EPCR2** for recovery.
+2. **Root SSD SATA dropout** (SSH alive) — power/connection to the SSD; reseat + reroute as
+   above. Likely introduced around the PSU swap.
+
 ## 2026-06-18 — froze AGAIN; throttle didn't help; trigger = disk-onset
 
 Froze **01:03:31**, ~2.5 days uptime; manual restart 16:25. **Third crash at ~01:03–01:12**

@@ -105,6 +105,16 @@ this and exposed a concrete lead.
       regardless — cheap relative to the outages.
 - [ ] Check the analog fan controller wiring while in there (see Step 3).
 
+## Step 2c — Root SSD SATA dropout (NEW 2026-06-19, likely PSU-swap-induced)
+On 06-18 the root SSD dropped off the bus (SSH alive, commands failed with disk errors) ~2.5h
+after the PSU swap. SSD is healthy (0 CRC) and the PHY log shows a clean link loss (2×
+PhyRdy→PhyNRdy, 0 CRC) → **power/connection, not data-signal**.
+- [ ] **Reseat the root SSD's SATA data + power.** Use a **different SATA power lead** off the
+      new PSU and ideally a **known-good data cable**. (SSD is on onboard port `ata4`.)
+- [ ] Re-check the PHY counters afterward (`smartctl -l sataphy /dev/sdr`): baseline is
+      PhyRdy→PhyNRdy=2 / COMRESET=2. If they climb, the link is still dropping → suspect the
+      SATA power lead or the onboard SATA controller.
+
 ## Step 3 — Thermal / fans
 Background: dynamic IPMI fan control was attempted and never worked; case fans were
 unplugged from the MB and put on a **manual analog controller**. Empty MB fan headers are
