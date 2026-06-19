@@ -29,3 +29,10 @@ mempalace/
 # OS files
 .DS_Store
 Thumbs.db
+
+# Local Claude Code state (per-machine, not shared)
+.claude/settings.local.json
+.claude/scheduled_tasks.lock
+
+# Ephemeral text/evidence dumps in the runtime log dir (only .gitkeep is tracked)
+log/*.txt
