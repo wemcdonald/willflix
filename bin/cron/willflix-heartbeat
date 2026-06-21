@@ -29,7 +29,7 @@ MONITOR_FRESHNESS_DIR="${MONITOR_FRESHNESS_DIR:-/var/tmp/willflix-monitors}"
 
 if [[ "$MODE" == "--full" ]]; then
     "$NOTIFY" --severity META --key "heartbeat-weekly" \
-        --subject "lafayette weekly heartbeat" \
+        --subject "mulligan weekly heartbeat" \
         --body "$(hostname) is alive. Both notification channels working. $(date)"
 fi
 

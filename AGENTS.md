@@ -3,7 +3,7 @@
 For full system reference (architecture, drive layout, services, common operations), see [.claude/CLAUDE.md](.claude/CLAUDE.md).
 
 ## What This Repo Is
-Ops repo for a personal headless media server (hostname: lafayette). Contains monitoring scripts, system documentation, runbooks, and PRDs for server health tooling.
+Ops repo for a personal headless media server (hostname: mulligan). Contains monitoring scripts, system documentation, runbooks, and PRDs for server health tooling.
 
 ## Principles
 

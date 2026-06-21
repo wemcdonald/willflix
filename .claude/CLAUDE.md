@@ -1,11 +1,11 @@
-# Willflix Server (lafayette)
+# Willflix Server (mulligan)
 
-This is the ops repo for a personal headless Ubuntu server (hostname: `lafayette`) running a self-hosted media stack, SSO infrastructure, and backup systems. It runs for years unattended — reliability and monitoring are paramount.
+This is the ops repo for a personal headless Ubuntu server (hostname: `mulligan`) running a self-hosted media stack, SSO infrastructure, and backup systems. It runs for years unattended — reliability and monitoring are paramount.
 
 ## System Overview
 
-- **OS**: Ubuntu 22.04 on Samsung 860 EVO 1TB SSD (root)
-- **Hostname**: lafayette
+- **OS**: Ubuntu 26.04 LTS; root on **ZFS** (`rpool` + `bpool`) on a WD_BLACK SN7100 2TB NVMe
+- **Hostname**: mulligan (formerly lafayette, rebuilt 2026-06 on new hardware)
 - **Storage**: 11 data drives (MediaA–K) + 3 parity drives in a mergerfs + snapraid array, ~98TB usable
 - **Services**: ~40 Docker containers behind Traefik reverse proxy with Authentik SSO
 - **Docker config**: Lives in `/willflix/docker/` (git-crypt encrypted secrets in `/willflix/secrets/`)

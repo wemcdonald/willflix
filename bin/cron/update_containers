@@ -313,7 +313,7 @@ def main():
 
             body += llm_note
 
-        notify.send("INFO", "container-updates", f"Container updates: {len(updated)} on lafayette", body)
+        notify.send("INFO", "container-updates", f"Container updates: {len(updated)} on mulligan", body)
 
 
 if __name__ == "__main__":
