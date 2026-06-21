@@ -1,0 +1,87 @@
+#!/bin/bash
+# zfs-migrate-willflix — ONE-SHOT: move /willflix off the root dataset onto its own
+# ZFS dataset (rpool/willflix), so docker appdata + configs can be snapshotted and
+# rolled back independently of the OS. Idempotent: exits cleanly if already migrated.
+#
+# Requires root, the rpool pool, and free space for a second copy of /willflix.
+# Causes Docker downtime during the final swap. The old copy is kept at /willflix.old
+# until you remove it. Postgres perf child dataset is created later — see
+# docs/runbooks/zfs-datasets.md.
+set -euo pipefail
+
+POOL=rpool
+DS=rpool/willflix
+MNT=/willflix
+STAGE=/willflix.stage
+OLD=/willflix.old
+
+GREEN='\033[0;32m'; YELLOW='\033[1;33m'; RED='\033[0;31m'; NC='\033[0m'
+info(){ echo -e "${GREEN}[✓]${NC} $*"; }
+warn(){ echo -e "${YELLOW}[!]${NC} $*"; }
+err(){  echo -e "${RED}[✗]${NC} $*"; }
+confirm(){ read -rp "$1 [y/N] " r; [[ "$r" =~ ^[Yy] ]]; }
+
+[[ $EUID -eq 0 ]] || { err "run as root"; exit 1; }
+command -v zfs &>/dev/null || { err "zfs not found"; exit 1; }
+
+# Already a dataset?
+if zfs list -H -o name,mountpoint 2>/dev/null | awk '$2=="'"$MNT"'"{f=1} END{exit !f}'; then
+    info "$MNT is already a ZFS dataset — nothing to do"
+    zfs list -o name,used,mountpoint "$DS" 2>/dev/null || true
+    exit 0
+fi
+
+need=$(du -sx -B1 "$MNT" | awk '{print $1}')
+free=$(zfs get -Hp -o value available "$POOL")
+info "$MNT uses $((need/1024/1024)) MiB; $POOL free $((free/1024/1024)) MiB"
+(( free > need + need/10 )) || { err "not enough free space in $POOL"; exit 1; }
+
+echo "Plan: create $DS (zstd, atime=off), copy $MNT into it, swap mountpoints."
+echo "Docker is stopped for the final delta+swap. Old data kept at $OLD."
+confirm "Proceed?" || exit 0
+
+# 1. Create dataset at a staging mountpoint
+if ! zfs list -H -o name "$DS" &>/dev/null; then
+    zfs create -o mountpoint="$STAGE" -o compression=zstd -o atime=off -o xattr=sa "$DS"
+    info "created $DS"
+fi
+
+# 2. Live copy (no downtime)
+info "initial rsync (services up)…"
+rsync -aHAX --numeric-ids --delete "$MNT"/ "$STAGE"/
+
+# 3. Stop Docker, delta copy, swap
+confirm "Stop Docker now and finish the swap?" || { warn "aborted before swap; staged copy at $STAGE"; exit 0; }
+systemctl stop docker.socket docker 2>/dev/null || true
+sleep 2
+info "delta rsync (services stopped)…"
+rsync -aHAX --numeric-ids --delete "$MNT"/ "$STAGE"/
+
+cd /                               # never hold cwd inside the dir being moved
+mv "$MNT" "$OLD"
+zfs set mountpoint="$MNT" "$DS"
+info "$DS now mounted at $MNT"
+
+# 4. Verify, else roll back
+if [[ -f "$MNT/docker/compose.yml" && -d "$MNT/.git" ]]; then
+    info "verified (compose.yml + .git present on the dataset)"
+else
+    err "verification FAILED — rolling back to $OLD"
+    zfs set mountpoint="$STAGE" "$DS" || true
+    rmdir "$MNT" 2>/dev/null || true
+    mv "$OLD" "$MNT"
+    systemctl start docker || true
+    exit 1
+fi
+
+# 5. Restart the stack
+systemctl start docker
+sleep 5
+docker network inspect config_default &>/dev/null || \
+    docker network create --subnet 172.30.0.0/16 --gateway 172.30.0.1 config_default
+( cd "$MNT/docker" && docker compose -p config up -d ) || warn "compose up returned nonzero — check manually"
+
+echo
+info "Migration complete. Old copy preserved at $OLD"
+warn "Verify the stack, then reclaim space:  sudo rm -rf $OLD"
+warn "Enable snapshots:  the zfs-snapshot crons fire once root-crontab is reinstalled."

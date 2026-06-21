@@ -1,0 +1,57 @@
+#!/bin/bash
+# zfs-snapshot — take a labelled recursive snapshot of the datasets listed in
+# etc/zfs-snapshot.conf and prune each dataset to the per-label keep count.
+# Missing datasets are skipped (so it's safe before willflix/plex are migrated).
+#
+# Usage (via willflix-cron, which forwards args):
+#   zfs-snapshot <label> <keep>     e.g.  zfs-snapshot hourly 24 | zfs-snapshot daily 14
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+NOTIFY="$(cd "$SCRIPT_DIR/.." && pwd)/willflix-notify"
+CONFIG="/willflix/etc/zfs-snapshot.conf"
+
+label="${1:?usage: zfs-snapshot <label> <keep>}"
+keep="${2:?usage: zfs-snapshot <label> <keep>}"
+
+DATASETS=()
+# shellcheck source=/dev/null
+[[ -f "$CONFIG" ]] && source "$CONFIG"
+
+ts="$(date +%Y%m%d-%H%M%S)"
+fail=0
+
+for ds in "${DATASETS[@]:-}"; do
+    [[ -z "$ds" ]] && continue
+    if ! zfs list -H -o name "$ds" &>/dev/null; then
+        echo "skip (missing): $ds"
+        continue
+    fi
+
+    if zfs snapshot -r "${ds}@${label}-${ts}"; then
+        echo "snapshot ${ds}@${label}-${ts}"
+    else
+        echo "FAILED to snapshot $ds"; fail=1; continue
+    fi
+
+    # Prune: keep the newest $keep snapshots of this label on this dataset.
+    mapfile -t snaps < <(zfs list -H -o name -t snapshot -s creation 2>/dev/null \
+        | grep -E "^${ds}@${label}-" || true)
+    cnt=${#snaps[@]}
+    if (( cnt > keep )); then
+        for old in "${snaps[@]:0:cnt-keep}"; do
+            if zfs destroy -r "$old"; then echo "pruned $old"; else echo "prune failed: $old"; fail=1; fi
+        done
+    fi
+done
+
+if (( fail )); then
+    "$NOTIFY" --severity WARNING --key "zfs-snapshot-${label}" \
+        --subject "ZFS snapshot (${label}) had failures on $(hostname)" \
+        --body "A snapshot or prune failed. Inspect:
+  zfs list -t snapshot | grep '${label}-'
+  tail -50 /willflix/log/zfs-snapshot.log" 2>/dev/null || true
+    exit 1
+fi
+
+echo "zfs-snapshot ${label}: ok"

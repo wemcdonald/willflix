@@ -24,6 +24,11 @@ MAILTO=will
 # Snapraid freshness monitor (independent of sync cron)
 30 8 * * * /willflix/bin/willflix-cron check_snapraid_freshness
 
+# ZFS snapshots — local instant-recovery layer (rpool/willflix + USERDATA; missing
+# datasets skipped). See etc/zfs-snapshot.conf and docs/runbooks/zfs-datasets.md.
+0 * * * * /willflix/bin/willflix-cron zfs-snapshot hourly 24
+15 0 * * * /willflix/bin/willflix-cron zfs-snapshot daily 14
+
 # MergerFS pool health check (every 15 min)
 */15 * * * * /willflix/bin/willflix-cron check_mergerfs_health
 

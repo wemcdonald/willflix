@@ -161,6 +161,18 @@ stage_2_packages() {
 stage_3_clone() {
     stage 3 "Clone repo"
 
+    # If root is ZFS, put /willflix on its own dataset before cloning so appdata +
+    # configs snapshot/roll back independently of the OS (docs/runbooks/zfs-datasets.md).
+    if command -v zfs &>/dev/null && zpool list -H -o name 2>/dev/null | grep -qx rpool \
+            && ! zfs list -H -o name rpool/willflix &>/dev/null \
+            && [[ ! -d "$REPO_DIR/.git" ]]; then
+        if confirm "Create ZFS dataset rpool/willflix mounted at $REPO_DIR?"; then
+            zfs create -o mountpoint="$REPO_DIR" -o compression=zstd -o atime=off -o xattr=sa rpool/willflix
+            chown will:will "$REPO_DIR"
+            info "created rpool/willflix"
+        fi
+    fi
+
     if [[ -d "$REPO_DIR/.git" ]]; then
         info "$REPO_DIR already exists — skipping clone"
         read -rp "Pull latest from origin? (leave existing checkout if you have local changes) [y/N] " reply
@@ -452,6 +464,13 @@ stage_7_docker() {
     else
         warn "secrets/healthbot_build_token missing — is the repo git-crypt unlocked?"
     fi
+
+    # Compose's default network is external (config_default). Its gateway 172.30.0.1
+    # is how containers (traefik) reach the host opencode service, so the subnet is
+    # fixed — a generic `network create` would assign the wrong gateway.
+    docker network inspect config_default &>/dev/null || \
+        docker network create --subnet 172.30.0.0/16 --gateway 172.30.0.1 config_default
+    info "config_default network present"
 
     docker compose -p "$COMPOSE_PROJECT" up -d
     info "Docker services started"
