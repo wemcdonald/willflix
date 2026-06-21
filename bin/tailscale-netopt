@@ -1,0 +1,16 @@
+#!/bin/bash
+# tailscale-netopt — apply Tailscale's recommended UDP GRO forwarding tuning to the
+# default-route NIC. Improves exit-node / subnet-router throughput (the kernel's
+# generic-receive-offload path is otherwise a bottleneck for forwarded UDP).
+# Idempotent and safe to re-run. Ref: https://tailscale.com/kb/1320/performance-best-practices
+set -euo pipefail
+
+# Resolve the interface that carries the default route (token after "dev").
+NIC="$(ip -o route get 8.8.8.8 2>/dev/null | awk '{for(i=1;i<=NF;i++) if($i=="dev"){print $(i+1); exit}}')"
+if [[ -z "${NIC:-}" ]]; then
+    echo "tailscale-netopt: no default-route NIC found; nothing to do" >&2
+    exit 0
+fi
+
+ethtool -K "$NIC" rx-udp-gro-forwarding on rx-gro-list off
+echo "tailscale-netopt: applied rx-udp-gro-forwarding on/rx-gro-list off to $NIC"

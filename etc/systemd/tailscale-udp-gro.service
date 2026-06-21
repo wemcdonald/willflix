@@ -1,0 +1,13 @@
+[Unit]
+Description=Tailscale exit-node UDP GRO tuning (throughput)
+Documentation=https://tailscale.com/kb/1320/performance-best-practices
+After=network-online.target tailscaled.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/willflix/bin/tailscale-netopt
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target

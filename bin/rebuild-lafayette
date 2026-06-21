@@ -12,6 +12,33 @@
 #   chmod +x rebuild-lafayette && sudo ./rebuild-lafayette
 #
 # Each stage pauses for confirmation. Answer 'n' to skip a stage.
+#
+# ─────────────────────────────────────────────────────────────────────────────
+# RULES FOR AI AGENTS EDITING THIS SCRIPT  (read before changing anything)
+#
+#  1. Idempotent & re-runnable. Every stage must be safe to run repeatedly and
+#     guarded so it skips work already done. Never assume a pristine machine.
+#  2. Stages stay individually confirmable (confirm || return 0). Never collapse
+#     stages or drop the prompts — partial rebuilds depend on skipping stages.
+#  3. Runs as root (check_root). Anything created for 'will' must be chown'd will.
+#  4. NEVER mkdir /Volumes/Media* (or any /Volumes/* data path) on the root SSD.
+#     Those are mountpoints for the spinning drives; creating them empty makes
+#     Docker/services write to the root disk and shadows the real mounts when the
+#     drives come up. Create the bare mountpoint only in Stage 5, only to mount it.
+#  5. Build-context dirs (compose `context:`) hold SOURCE that lives in backups
+#     (appdata via restic/B2, ~/code via the home backup). They CANNOT be created
+#     with mkdir — an empty dir has no Dockerfile. Detect & report; never fake them.
+#  6. Secrets come from git-crypt (Stage 4). Never hardcode a credential here —
+#     read from "$REPO_DIR/secrets/*", and assume the repo may still be locked.
+#  7. Private images need `docker login ghcr.io` BEFORE `compose up`, or a single
+#     unauthorized pull aborts the whole batch (see Stage 7).
+#  8. snapraid crons are ENABLED in etc/root-crontab (re-enabled 2026-06-21 on new
+#     hardware; old PSU/hang cause gone). GATE: run one baseline `snapraid sync`
+#     after the drives mount before relying on the 01:00 job.
+#  9. `set -euo pipefail` is on: guard greps with `|| true` (no match returns 1),
+#     guard empty-array expansion, and wrap long-running ops in `timeout`.
+# 10. Reference drives by LABEL= (fstab) / by-id ata-* (smartd) — never /dev/sdX.
+# ─────────────────────────────────────────────────────────────────────────────
 
 set -euo pipefail
 
@@ -98,7 +125,7 @@ stage_2_packages() {
         install -m 0755 -d /etc/apt/keyrings
         curl -fsSL https://download.docker.com/linux/ubuntu/gpg | gpg --dearmor -o /etc/apt/keyrings/docker.gpg
         chmod a+r /etc/apt/keyrings/docker.gpg
-        echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu $(. /etc/os-release && echo "$VERSION_CODENAME") stable" > /etc/apt/sources-list.d/docker.list
+        echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu $(. /etc/os-release && echo "$VERSION_CODENAME") stable" > /etc/apt/sources.list.d/docker.list
         apt-get update
         apt-get install -y docker-ce docker-ce-cli containerd.io docker-compose-plugin
         usermod -aG docker will
@@ -111,10 +138,22 @@ stage_2_packages() {
     PACKAGES=(
         git git-crypt smartmontools mergerfs snapraid
         jq htop tmux ripgrep mosh curl wget
-        python3 python3-yaml
+        python3 python3-yaml restic ethtool
     )
     apt-get install -y "${PACKAGES[@]}"
     info "Core packages installed"
+
+    # Tailscale — host-level mesh VPN (NOT a Docker service; was manually installed
+    # on the old box). The sysctl.d/99-tailscale.conf forwarding drop-in ships in
+    # Stage 6. Auth is interactive, so `tailscale up` is left for the operator.
+    if ! command -v tailscale &>/dev/null; then
+        info "Installing Tailscale..."
+        curl -fsSL https://tailscale.com/install.sh | sh
+        warn "Run 'sudo tailscale up' manually to authenticate (interactive browser login)."
+        warn "If this host was an exit node/subnet router, add --advertise-exit-node / --advertise-routes."
+    else
+        info "Tailscale already installed"
+    fi
 }
 
 # --- Stage 3: Clone repo ---
@@ -123,8 +162,13 @@ stage_3_clone() {
     stage 3 "Clone repo"
 
     if [[ -d "$REPO_DIR/.git" ]]; then
-        info "$REPO_DIR already exists, pulling latest"
-        git -C "$REPO_DIR" pull
+        info "$REPO_DIR already exists — skipping clone"
+        read -rp "Pull latest from origin? (leave existing checkout if you have local changes) [y/N] " reply
+        if [[ "$reply" =~ ^[Yy] ]]; then
+            git -C "$REPO_DIR" pull
+        else
+            info "Leaving existing checkout as-is"
+        fi
     else
         echo "Will clone $REPO_URL to $REPO_DIR"
         echo ""
@@ -319,6 +363,12 @@ stage_6_configs() {
     systemctl daemon-reload
     info "systemd daemon reloaded"
 
+    # Enable non-Docker helper units (the docker *.service wrappers are run by compose,
+    # not systemd; this oneshot applies Tailscale exit-node throughput tuning at boot).
+    systemctl enable --now tailscale-udp-gro.service 2>/dev/null \
+        && info "tailscale-udp-gro.service enabled" \
+        || warn "tailscale-udp-gro.service not enabled (check ethtool / unit)"
+
     # Sendmail wrapper
     ln -sfn "$REPO_DIR/bin/sendmail-system" /usr/sbin/sendmail
     info "sendmail → $REPO_DIR/bin/sendmail-system"
@@ -350,6 +400,59 @@ stage_7_docker() {
     confirm || return 0
 
     cd "$REPO_DIR/docker"
+    local compose="$REPO_DIR/docker/compose.yml"
+
+    # Collect build-context dirs (compose `context:`) — these need restored SOURCE,
+    # so we exclude them from mkdir and report any that are missing (rule #4/#5).
+    local contexts=()
+    mapfile -t contexts < <(grep -E '^[[:space:]]*context:' "$compose" 2>/dev/null \
+        | sed -E 's/.*context:[[:space:]]*//' | tr -d '"' || true)
+
+    # Create the host bind-mount data dirs that are safe to create empty:
+    # appdata/* + docker/logs. We deliberately skip /Volumes/* (drive mounts) and
+    # any path that is a build context.
+    mkdir -p "$REPO_DIR/docker/logs"
+    while read -r d; do
+        [[ -z "$d" ]] && continue
+        local is_ctx=0
+        for c in "${contexts[@]:-}"; do [[ "$c" == "$d" ]] && is_ctx=1; done
+        (( is_ctx )) && continue
+        mkdir -p "$d"
+    done < <(grep -oE '/willflix/docker/appdata/[A-Za-z0-9_-]+' "$compose" 2>/dev/null | sort -u || true)
+    info "appdata data dirs ensured (build-context + /Volumes paths skipped)"
+
+    # Report missing build contexts — these block `compose up` until restored.
+    local missing=()
+    for c in "${contexts[@]:-}"; do
+        [[ -z "$c" ]] && continue
+        [[ -e "$c" ]] || missing+=("$c")
+    done
+    if (( ${#missing[@]} )); then
+        warn "Missing build-context dirs — these block 'compose up' until their SOURCE is restored:"
+        printf '      %s\n' "${missing[@]}"
+        echo ""
+        echo "  Restore first, then re-run this stage:"
+        echo "    • appdata builds (gastown/guildmaster/health-server): restic restore from B2"
+        echo "    • ~/code builds (homebot/parchment-server): restore /home/will from the home backup"
+        echo "  See docs/runbooks for the exact restic commands."
+        echo ""
+        warn "A full 'compose up' WILL abort on these. Only override if you know what you're doing."
+        confirm "Try 'compose up' anyway (expected to fail on the missing builds)?" || return 0
+    fi
+
+    # Authenticate to GHCR for private images (e.g. ghcr.io/wemcdonald/healthbot).
+    # Without this, the unauthorized pull aborts the whole `compose up` batch.
+    if [[ -s "$REPO_DIR/secrets/healthbot_build_token" ]]; then
+        if docker login ghcr.io -u wemcdonald --password-stdin \
+                < "$REPO_DIR/secrets/healthbot_build_token" &>/dev/null; then
+            info "Logged in to ghcr.io (private images)"
+        else
+            warn "ghcr.io login failed — private images (healthbot) may not pull"
+        fi
+    else
+        warn "secrets/healthbot_build_token missing — is the repo git-crypt unlocked?"
+    fi
+
     docker compose -p "$COMPOSE_PROJECT" up -d
     info "Docker services started"
 
