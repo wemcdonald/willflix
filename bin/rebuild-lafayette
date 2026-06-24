@@ -1,8 +1,8 @@
 #!/bin/bash
-# rebuild-lafayette — guided rebuild of lafayette server from a fresh Ubuntu 22.04 install.
+# rebuild-lafayette — guided rebuild of lafayette server from a fresh Ubuntu 26.04 install.
 #
 # Prerequisites:
-#   - Fresh Ubuntu 22.04 install with 'will' user and sudo access
+#   - Fresh Ubuntu 26.04 install with 'will' user and sudo access
 #   - Network access to GitHub
 #   - SSH key for GitHub (or HTTPS token)
 #   - git-crypt symmetric key file (from LastPass)
@@ -44,7 +44,12 @@ set -euo pipefail
 
 REPO_URL="git@github.com:wemcdonald/willflix.git"
 REPO_DIR="/willflix"
-COMPOSE_PROJECT="config"
+# Live deployment runs as compose project "docker" (the basename of /willflix/docker,
+# matching CLAUDE.md's `cd docker && docker compose up`). Network names stay config_*
+# because compose.yml sets them explicitly, independent of project. Was "config",
+# which produced config-* containers that split-brained against the documented bare
+# `docker compose` usage (2026-06-24).
+COMPOSE_PROJECT="docker"
 
 # --- Helpers ---
 
@@ -78,9 +83,9 @@ stage_1_prerequisites() {
 
     # Check Ubuntu version
     if grep -q 'VERSION_ID="22.04"' /etc/os-release; then
-        info "Ubuntu 22.04 detected"
+        info "Ubuntu 26.04 detected"
     else
-        warn "Expected Ubuntu 22.04, found: $(grep VERSION_ID /etc/os-release)"
+        warn "Expected Ubuntu 26.04, found: $(grep VERSION_ID /etc/os-release)"
         confirm "Continue anyway?" || exit 1
     fi
 
@@ -389,6 +394,12 @@ stage_6_configs() {
     ln -sfn "$REPO_DIR/docker" /docker
     info "/docker → $REPO_DIR/docker"
 
+    # compose.yml lives in docker/ and references secrets as ./secrets — so
+    # docker/secrets must resolve to the (git-crypt) secrets dir. Missing this
+    # in the 2026-06 rebuild made EVERY secret-using container fail to start.
+    ln -sfn "$REPO_DIR/secrets" "$REPO_DIR/docker/secrets"
+    info "docker/secrets → $REPO_DIR/secrets"
+
     # Compose compat (config/ dir with symlinks)
     mkdir -p "$REPO_DIR/willflix/docker"
     ln -sfn "$REPO_DIR/docker/compose.yml" "$REPO_DIR/willflix/docker/docker-compose.yml"
@@ -511,7 +522,7 @@ stage_8_postgres() {
     # Wait for postgres to be ready
     echo "Waiting for postgres to be ready..."
     local tries=0
-    while ! docker exec config-postgres-1 pg_isready -U will &>/dev/null; do
+    while ! docker exec ${COMPOSE_PROJECT}-postgres-1 pg_isready -U will &>/dev/null; do
         tries=$((tries + 1))
         if [[ $tries -gt 30 ]]; then
             err "Postgres not ready after 30 seconds"
@@ -523,7 +534,7 @@ stage_8_postgres() {
 
     # Restore globals first
     if [[ -f "$latest_dir/globals.sql.gz" ]]; then
-        gunzip -c "$latest_dir/globals.sql.gz" | docker exec -i config-postgres-1 psql -U will postgres 2>&1 | tail -3
+        gunzip -c "$latest_dir/globals.sql.gz" | docker exec -i ${COMPOSE_PROJECT}-postgres-1 psql -U will postgres 2>&1 | tail -3
         info "Globals restored"
     fi
 
@@ -534,9 +545,9 @@ stage_8_postgres() {
         [[ "$dbname" == "globals" ]] && continue
 
         echo "Restoring $dbname..."
-        docker exec config-postgres-1 psql -U will -tc "SELECT 1 FROM pg_database WHERE datname='$dbname'" | grep -q 1 || \
-            docker exec config-postgres-1 createdb -U will "$dbname" 2>/dev/null || true
-        gunzip -c "$dump" | docker exec -i config-postgres-1 psql -U will "$dbname" 2>&1 | tail -3
+        docker exec ${COMPOSE_PROJECT}-postgres-1 psql -U will -tc "SELECT 1 FROM pg_database WHERE datname='$dbname'" | grep -q 1 || \
+            docker exec ${COMPOSE_PROJECT}-postgres-1 createdb -U will "$dbname" 2>/dev/null || true
+        gunzip -c "$dump" | docker exec -i ${COMPOSE_PROJECT}-postgres-1 psql -U will "$dbname" 2>&1 | tail -3
         info "$dbname restored"
     done
 }
@@ -628,7 +639,7 @@ main() {
     echo "║     lafayette server rebuild script    ║"
     echo "╠═══════════════════════════════════════╣"
     echo "║  Guides you through rebuilding from a  ║"
-    echo "║  fresh Ubuntu 22.04 install.           ║"
+    echo "║  fresh Ubuntu 26.04 install.           ║"
     echo "║                                        ║"
     echo "║  You'll need:                          ║"
     echo "║  • SSH key for GitHub                  ║"

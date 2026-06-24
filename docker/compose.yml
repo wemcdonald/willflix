@@ -57,7 +57,13 @@ services:
   # which backs up root SSD + Plex SSD + irreplaceable media to Bonus1 + B2
 
   traefik:
-    image: traefik:v2.10
+    # v2.11 added Docker API-version negotiation; v2.10 hardcoded API 1.24,
+    # which the Ubuntu 26.04 daemon rejects (min API 1.40) → no router discovery.
+    image: traefik:v2.11
+    restart: unless-stopped
+    environment:
+      # Belt-and-suspenders: cap the negotiated API at a daemon-supported version.
+      - DOCKER_API_VERSION=1.44
     command:
       - "--providers.docker=true"
       - "--providers.docker.exposedbydefault=false"
@@ -543,32 +549,35 @@ services:
       - traefik_public
 
 
-  navidrome:
-    image: deluan/navidrome:latest
-    container_name: navidrome
-    user: 122:129
-    environment:
-      - TZ=America/Los_Angeles
-      - ND_LOGLEVEL=info
-      - ND_MUSICFOLDER=/music
-      - ND_DATAFOLDER=/data
-      - ND_SCANSCHEDULE=1h
-      - ND_ENABLESHARING=true
-    volumes:
-      - /willflix/docker/appdata/navidrome/data:/data
-      - /Volumes/Media/Music:/music:ro
-    ports:
-      - 4533:4533
-    restart: unless-stopped
-    labels:
-      - "traefik.enable=true"
-      - "traefik.http.services.navidrome.loadbalancer.server.port=4533"
-      - "traefik.docker.network=config_traefik_public"
-      - "traefik.http.routers.navidrome.rule=Host(`music.willflix.org`)"
-      - "traefik.http.routers.navidrome.entrypoints=websecure"
-      - "traefik.http.routers.navidrome.tls.certresolver=le"
-    networks:
-      - traefik_public
+  # DISABLED 2026-06-24: crash-looping (Restarting (2)) since the 2026-06 rebuild.
+  # Not yet diagnosed — re-enable once the restart loop is fixed. See navidrome
+  # appdata/data (sqlite) — likely a corrupt/empty DB or perms after the rebuild.
+  # navidrome:
+  #   image: deluan/navidrome:latest
+  #   container_name: navidrome
+  #   user: 122:129
+  #   environment:
+  #     - TZ=America/Los_Angeles
+  #     - ND_LOGLEVEL=info
+  #     - ND_MUSICFOLDER=/music
+  #     - ND_DATAFOLDER=/data
+  #     - ND_SCANSCHEDULE=1h
+  #     - ND_ENABLESHARING=true
+  #   volumes:
+  #     - /willflix/docker/appdata/navidrome/data:/data
+  #     - /Volumes/Media/Music:/music:ro
+  #   ports:
+  #     - 4533:4533
+  #   restart: unless-stopped
+  #   labels:
+  #     - "traefik.enable=true"
+  #     - "traefik.http.services.navidrome.loadbalancer.server.port=4533"
+  #     - "traefik.docker.network=config_traefik_public"
+  #     - "traefik.http.routers.navidrome.rule=Host(`music.willflix.org`)"
+  #     - "traefik.http.routers.navidrome.entrypoints=websecure"
+  #     - "traefik.http.routers.navidrome.tls.certresolver=le"
+  #   networks:
+  #     - traefik_public
 
 
   # Backup
