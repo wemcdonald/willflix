@@ -5,12 +5,12 @@
 # that works even if disks are added and removed. See fstab(5).
 #
 # <file system> <mount point>   <type>  <options>       <dump>  <pass>
-/dev/mapper/vgubuntu-root /               ext4    errors=remount-ro 0       1
-# /boot/efi was on /dev/sdm1 during installation
-UUID=E5F6-B2F0  /boot/efi       vfat    umask=0077      0       1
-/dev/mapper/vgubuntu-swap_1 none            swap    sw              0       0
-
-#/dev/mapper/pve-root /Volumes/OldRoot ext4 defaults 0 0
+/dev/disk/by-uuid/a4721654-b31e-4654-a5ef-07b21ddd1c2f none swap sw 0 0
+# Use `zfs list` for current zfs mount info
+# bpool none defaults 0 0
+# rpool none defaults 0 0
+# /boot/efi was on /dev/nvme0n1p1 during curtin installation
+/dev/disk/by-uuid/BE09-A961 /boot/efi vfat defaults 0 1
 
 #=#=# BEGIN WILLFLIX
 # Media drives
@@ -29,15 +29,14 @@ LABEL=MediaParity1  /Volumes/MediaParity1    ext4    defaults,nofail,x-systemd.d
 LABEL=MediaParity2  /Volumes/MediaParity2    ext4    defaults,nofail,x-systemd.device-timeout=30s,x-systemd.mount-timeout=30s        0       2
 LABEL=MediaParity3  /Volumes/MediaParity3    ext4    defaults,nofail,x-systemd.device-timeout=30s,x-systemd.mount-timeout=30s        0       2
 LABEL=MediaSpare    /Volumes/MediaSpare      ext4    defaults,nofail,x-systemd.device-timeout=30s,x-systemd.mount-timeout=30s        0       2 # !!
-
-LABEL=Bonus1        /Volumes/Bonus1      ext4    defaults,nofail,x-systemd.device-timeout=30s,x-systemd.mount-timeout=30s        0       2 # !!
+LABEL=Bonus1        /Volumes/Bonus1          ext4    defaults,nofail,x-systemd.device-timeout=30s,x-systemd.mount-timeout=30s        0       2 # !!
 
 LABEL=Plex          /Volumes/Plex            ext4    defaults,nofail,x-systemd.device-timeout=30s,x-systemd.mount-timeout=30s,errors=remount-ro 0 2
-#LABEL=NewPlex       /Volumes/NewPlex         ext4    defaults,nofail,x-systemd.device-timeout=30s,x-systemd.mount-timeout=30s,errors=remount-ro 0 2
-#
+#UUID=3ae659eb-395c-489f-bc34-741d93df243d  /Volumes/Plex  ext4  defaults,nofail,x-systemd.device-timeout=30s,x-systemd.mount-timeout=30s,errors=remount-ro  0  2
+
 ## RAMdisk
-none 		    /Volumes/PlexTranscode   tmpfs    nodev,nosuid,noexec,nodiratime,size=20G 0 0
-#
+#none 		    /Volumes/PlexTranscode   tmpfs    nodev,nosuid,noexec,nodiratime,size=20G 0 0
+
 ## MergerFS
 /Volumes/Media[A-Z]     /Volumes/Media            fuse.mergerfs defaults,category.create=mspmfs,allow_other,minfreespace=50G,fsname=MediaFS,nonempty,moveonenospc=true,func.getattr=newest,use_ino,noforget,inodecalc=path-hash 0 0
 # create policy "mspmfs == Of all the branches on which the relative path exists choose the drive with the most free space. but walk back the path if it fails to find a branch at that level.
