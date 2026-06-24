@@ -1,0 +1,149 @@
+#!/bin/bash
+# zfs-migrate-plex — UNATTENDED migration of Plex data from the SATA SSD
+# (/Volumes/Plex, label Plex) onto its own ZFS dataset rpool/plex, mounted at the
+# SAME path so compose needs no changes. Built to run overnight as root via `at`.
+#
+# Safety model:
+#   * Non-destructive: the SATA copy is only unmounted, never wiped.
+#   * Fail-safe: ANY error before the mountpoint swap restores the original state
+#     (SATA mounted at /Volumes/Plex, /etc/fstab intact, Plex running). No half-migration.
+#   * Two-pass: bulk rsync with Plex live (no downtime), then a short stopped delta
+#     so the SQLite DB copies consistently; verified by md5 before cutover.
+#   * Quiet: rsync per-file output is suppressed (separate rsync log); only timestamped
+#     step progress + summaries hit the main log. Review:  tail /willflix/log/zfs-migrate-plex.log
+#   * Notifies via willflix-notify on success/failure.
+#
+# Run as root. Schedule:  echo /willflix/bin/zfs-migrate-plex | sudo at 01:00
+set -uo pipefail   # deliberately NOT -e: errors are handled explicitly to fail safe
+
+# `at`/cron run with a minimal PATH that omits /usr/sbin (where zfs/mount live).
+export PATH=/usr/sbin:/usr/bin:/sbin:/bin:$PATH
+
+DS=rpool/plex
+MNT=/Volumes/Plex
+STAGE=/Volumes/Plex.new
+DOCKER_DIR=/willflix/docker
+PUID=122           # plex container runs as PUID/PGID 122/129 (compose) — data must match
+PGID=129
+LOGFILE=/willflix/log/zfs-migrate-plex.log
+RSYNC_LOG=/willflix/log/zfs-migrate-plex.rsync.log
+NOTIFY=/willflix/bin/willflix-notify
+DB_REL="Plex Media Server/Plug-in Support/Databases/com.plexapp.plugins.library.db"
+EXCLUDES=(--exclude 'Plex Media Server/Cache/' --exclude 'Plex Media Server/Plug-in Support/Caches/')
+
+mkdir -p "$(dirname "$LOGFILE")"
+log(){ echo "$(date '+%F %T') | $*" | tee -a "$LOGFILE"; }
+plex_start(){ ( cd "$DOCKER_DIR" && docker compose -p config up -d plex ) >>"$LOGFILE" 2>&1; }
+plex_stop(){  ( cd "$DOCKER_DIR" && docker compose -p config stop plex )  >>"$LOGFILE" 2>&1; }
+notify(){ [[ -x "$NOTIFY" ]] && "$NOTIFY" --severity "$1" --key plex-zfs-migrate --subject "$2" --body "$3" >/dev/null 2>&1 || true; }
+
+SWAPPED=0
+FSTAB_BAK=""
+bail(){
+    log "ERROR: $1"
+    if [[ $SWAPPED -eq 0 ]]; then
+        log "FAIL-SAFE: no swap done — restoring original state"
+        if mountpoint -q "$MNT" && [[ "$(findmnt -no FSTYPE "$MNT" 2>/dev/null)" == zfs ]]; then
+            zfs set mountpoint="$STAGE" "$DS" 2>>"$LOGFILE" || log "  WARN: could not move dataset off $MNT"
+        fi
+        [[ -n "$FSTAB_BAK" && -f "$FSTAB_BAK" ]] && cp -a "$FSTAB_BAK" /etc/fstab && log "  restored /etc/fstab"
+        mountpoint -q "$MNT" || mount "$MNT" 2>>"$LOGFILE" || log "  WARN: could not remount SATA at $MNT — CHECK MANUALLY"
+        plex_start
+        log "FAIL-SAFE done: Plex back on original SATA drive."
+        notify WARNING "Plex ZFS migration FAILED (safe)" "Aborted before swap: $1
+Original state restored (SATA + Plex up). Log: $LOGFILE"
+    else
+        log "NOTE: error AFTER swap — data is on rpool/plex; Plex may need a manual start. $1"
+        notify WARNING "Plex ZFS migration: post-swap issue" "Swap OK but later step failed: $1
+Log: $LOGFILE"
+    fi
+    exit 1
+}
+run_rsync(){   # $1 = phase label
+    local rc
+    log "rsync ($1) starting…"
+    rsync -aHX --numeric-ids --delete --stats "${EXCLUDES[@]}" "$MNT"/ "$STAGE"/ >>"$RSYNC_LOG" 2>&1
+    rc=$?
+    [[ $rc -eq 0 || $rc -eq 24 ]] || bail "rsync ($1) failed (exit $rc) — see $RSYNC_LOG"
+    log "rsync ($1) done (rc=$rc$([[ $rc -eq 24 ]] && echo '; 24=files changed mid-copy, expected'))"
+    grep -E 'Total transferred file size|Number of regular files transferred' "$RSYNC_LOG" | tail -2 | while read -r l; do log "   $l"; done
+}
+
+log "===== zfs-migrate-plex start ====="
+: > "$RSYNC_LOG"
+[[ $EUID -eq 0 ]] || { echo "must run as root"; exit 1; }
+command -v zfs >/dev/null || { log "zfs not found — aborting"; exit 1; }
+
+if zfs list -H -o name,mountpoint 2>/dev/null | awk -v m="$MNT" '$2==m{f=1} END{exit !f}'; then
+    log "$MNT is already a ZFS dataset — nothing to do"; exit 0
+fi
+mountpoint -q "$MNT" || { log "$MNT not mounted (expected SATA Plex drive) — aborting"; exit 1; }
+[[ -f "$MNT/$DB_REL" ]] || { log "library DB not found on source — aborting"; exit 1; }
+
+used=$(df -B1 --output=used "$MNT" | tail -1)
+free=$(zfs get -Hp -o value available rpool)
+log "source used $((used/1024/1024)) MiB; rpool free $((free/1024/1024)) MiB"
+(( free > used )) || { log "not enough free space in rpool — aborting"; exit 1; }
+
+# 1. Dataset at staging mountpoint
+if ! zfs list -H -o name "$DS" >/dev/null 2>&1; then
+    zfs create -o mountpoint="$STAGE" -o compression=zstd -o atime=off -o xattr=sa "$DS" || { log "zfs create failed"; exit 1; }
+fi
+log "dataset $DS ready at $STAGE"
+
+# 2. Bulk pass — Plex stays UP (no downtime)
+run_rsync "bulk/live"
+
+# 3. Stop Plex for the consistent final pass
+plex_stop; log "Plex stopped for delta + cutover"
+sleep 3
+
+# 4. Delta pass — Plex stopped → DB quiescent
+run_rsync "delta/stopped"
+
+# 5. Verify copy (Plex stopped: source DB is stable)
+log "verifying copy…"
+log "  df source: $(df -h "$MNT" | awk 'NR==2{print $3" used / "$2}')   dataset used: $(zfs get -Hp -o value used "$DS" | awk '{printf "%.1f GiB", $1/1073741824}')"
+src_md5=$(md5sum "$MNT/$DB_REL" | awk '{print $1}')
+dst_md5=$(md5sum "$STAGE/$DB_REL" | awk '{print $1}')
+log "  library DB md5  source=$src_md5  staged=$dst_md5"
+[[ -n "$src_md5" && "$src_md5" == "$dst_md5" ]] || bail "library DB md5 mismatch — copy not trustworthy"
+log "  DB md5 OK"
+
+# 6. Permissions — everything owned by the plex uid/gid
+log "chown -R $PUID:$PGID $STAGE (plex=$(id -nu $PUID 2>/dev/null || echo $PUID):$(getent group $PGID | cut -d: -f1))…"
+chown -R "$PUID:$PGID" "$STAGE" || bail "chown failed"
+own=$(stat -c '%u:%g' "$STAGE/$DB_REL")
+[[ "$own" == "$PUID:$PGID" ]] || bail "ownership check failed (DB owned by $own, want $PUID:$PGID)"
+log "  ownership OK ($own)"
+
+# 7. Cutover — fstab first so a reboot can't reclaim $MNT with the SATA drive
+FSTAB_BAK="/etc/fstab.pre-plex-zfs.$(date +%s)"
+cp -a /etc/fstab "$FSTAB_BAK" || bail "fstab backup failed"
+awk -v m="$MNT" '($1 !~ /^#/ && $2==m){print "#zfs-migrate-plex (moved to rpool/plex): " $0; next} {print}' \
+    /etc/fstab > /etc/fstab.tmp && mv /etc/fstab.tmp /etc/fstab || bail "fstab edit failed"
+log "commented SATA $MNT line in /etc/fstab (backup $FSTAB_BAK)"
+umount "$MNT" || bail "could not unmount SATA $MNT (busy?)"
+zfs set mountpoint="$MNT" "$DS" || bail "zfs set mountpoint failed"
+
+# 8. Post-swap verification
+{ mountpoint -q "$MNT" && [[ "$(findmnt -no FSTYPE "$MNT" 2>/dev/null)" == zfs ]]; } || bail "dataset did not mount at $MNT"
+post_md5=$(md5sum "$MNT/$DB_REL" 2>/dev/null | awk '{print $1}')
+[[ "$post_md5" == "$src_md5" ]] || bail "post-swap DB md5 mismatch ($post_md5 vs $src_md5)"
+SWAPPED=1
+rmdir "$STAGE" 2>/dev/null || true
+log "SWAP COMPLETE: $DS mounted at $MNT; DB verified ($post_md5)"
+
+# 9. Start Plex on the dataset
+plex_start
+sleep 5
+if docker ps --filter name=plex --format '{{.Names}}' 2>/dev/null | grep -qx plex; then
+    log "Plex started on rpool/plex"
+else
+    log "WARN: Plex not confirmed up — check: docker compose -p config logs plex"
+fi
+
+log "===== zfs-migrate-plex SUCCESS ====="
+notify INFO "Plex ZFS migration complete" "Plex now on rpool/plex at $MNT (DB md5 $src_md5).
+SATA copy intact + unmounted (fallback). Commit follow-ups: etc/fstab + etc/zfs-snapshot.conf.
+Log: $LOGFILE"
