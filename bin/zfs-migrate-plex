@@ -33,8 +33,10 @@ EXCLUDES=(--exclude 'Plex Media Server/Cache/' --exclude 'Plex Media Server/Plug
 
 mkdir -p "$(dirname "$LOGFILE")"
 log(){ echo "$(date '+%F %T') | $*" | tee -a "$LOGFILE"; }
-plex_start(){ ( cd "$DOCKER_DIR" && docker compose -p config up -d plex ) >>"$LOGFILE" 2>&1; }
-plex_stop(){  ( cd "$DOCKER_DIR" && docker compose -p config stop plex )  >>"$LOGFILE" 2>&1; }
+# Drive Plex by its pinned container_name (project-agnostic — the compose project
+# name has changed before, e.g. config -> docker; the container is always "plex").
+plex_start(){ docker start plex >>"$LOGFILE" 2>&1; }
+plex_stop(){  docker stop  plex >>"$LOGFILE" 2>&1; }
 notify(){ [[ -x "$NOTIFY" ]] && "$NOTIFY" --severity "$1" --key plex-zfs-migrate --subject "$2" --body "$3" >/dev/null 2>&1 || true; }
 
 SWAPPED=0
@@ -140,7 +142,7 @@ sleep 5
 if docker ps --filter name=plex --format '{{.Names}}' 2>/dev/null | grep -qx plex; then
     log "Plex started on rpool/plex"
 else
-    log "WARN: Plex not confirmed up — check: docker compose -p config logs plex"
+    log "WARN: Plex not confirmed up — check: docker logs plex"
 fi
 
 log "===== zfs-migrate-plex SUCCESS ====="
