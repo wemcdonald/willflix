@@ -786,13 +786,17 @@ services:
       - "traefik.http.routers.dnd-health.middlewares=authentik-forward@file"
       - "traefik.http.routers.dnd-health.service=dnd-health"
       # Device feed: bare HTTP, NO auth, NO HTTPS redirect. Pico polls
-      # http://public.willflix.org/dnd/<slug>.txt. priority 1000 beats the global
-      # web->websecure redirect (priority 1) for this Host+path only. Only the
-      # /dnd prefix is exposed on public.willflix.org; the admin UI is not.
-      - "traefik.http.routers.dnd.rule=Host(`public.willflix.org`) && PathPrefix(`/dnd`)"
+      # http://dndhealth.willflix.org/<slug>.txt. Scoped to a single-segment
+      # *.txt path so the admin UI is NEVER reachable over plain HTTP (only .txt
+      # files match). The addprefix middleware maps /<slug>.txt onto the app's
+      # /dnd/<slug>.txt route, so no app change is needed. priority 1000 beats the
+      # global web->websecure redirect (priority 1) for this Host+path only.
+      - "traefik.http.routers.dnd.rule=Host(`dndhealth.willflix.org`) && Path(`/{file:[a-zA-Z0-9_-]+\\.txt}`)"
       - "traefik.http.routers.dnd.entrypoints=web"
       - "traefik.http.routers.dnd.service=dnd-health"
       - "traefik.http.routers.dnd.priority=1000"
+      - "traefik.http.routers.dnd.middlewares=dnd-addprefix"
+      - "traefik.http.middlewares.dnd-addprefix.addprefix.prefix=/dnd"
       - "traefik.docker.network=config_traefik_public"
 
   nginx-public:
