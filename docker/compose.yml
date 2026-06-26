@@ -74,6 +74,10 @@ services:
       - "--entrypoints.web.address=:80"
       - "--entrypoints.web.http.redirections.entryPoint.to=websecure"
       - "--entrypoints.web.http.redirections.entryPoint.scheme=https"
+      # Lower the global HTTP->HTTPS redirect router's priority (default MaxInt32)
+      # so specific opt-in routers on the `web` entrypoint can outrank it and
+      # serve bare HTTP. See the `dnd` router on nginx-public below.
+      - "--entrypoints.web.http.redirections.entryPoint.priority=1"
       - "--entrypoints.websecure.address=:443"
       - "--certificatesresolvers.le.acme.email=wemcdonald@gmail.com"
       - "--certificatesresolvers.le.acme.storage=/letsencrypt/acme.json"
@@ -755,6 +759,42 @@ services:
       - traefik_public
       - default
 
+  # D&D health tracker. Polls D&D Beyond and serves a tiny precomputed file per
+  # character that the Pico LED bars poll over PLAIN HTTP. Source is its own repo
+  # at images/dnd-health (gitignored); built from images/dnd-health/server.
+  dnd-health:
+    build:
+      context: /willflix/docker/images/dnd-health/server
+    container_name: dnd-health
+    restart: unless-stopped
+    environment:
+      - TZ=America/Los_Angeles
+      - PORT=8080
+      - DB_PATH=/data/tracker.db
+    volumes:
+      - /willflix/docker/appdata/dnd-health:/data
+    networks:
+      - traefik_public
+      - default
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.services.dnd-health.loadbalancer.server.port=8080"
+      # Admin UI: HTTPS + Authentik forward-auth (no app-level password).
+      - "traefik.http.routers.dnd-health.rule=Host(`dndhealth.willflix.org`)"
+      - "traefik.http.routers.dnd-health.entrypoints=websecure"
+      - "traefik.http.routers.dnd-health.tls.certresolver=le"
+      - "traefik.http.routers.dnd-health.middlewares=authentik-forward@file"
+      - "traefik.http.routers.dnd-health.service=dnd-health"
+      # Device feed: bare HTTP, NO auth, NO HTTPS redirect. Pico polls
+      # http://public.willflix.org/dnd/<slug>.txt. priority 1000 beats the global
+      # web->websecure redirect (priority 1) for this Host+path only. Only the
+      # /dnd prefix is exposed on public.willflix.org; the admin UI is not.
+      - "traefik.http.routers.dnd.rule=Host(`public.willflix.org`) && PathPrefix(`/dnd`)"
+      - "traefik.http.routers.dnd.entrypoints=web"
+      - "traefik.http.routers.dnd.service=dnd-health"
+      - "traefik.http.routers.dnd.priority=1000"
+      - "traefik.docker.network=config_traefik_public"
+
   nginx-public:
     image: nginx:alpine
     container_name: nginx-public
@@ -778,6 +818,9 @@ services:
       - "traefik.http.routers.stanford.entrypoints=websecure"
       - "traefik.http.routers.stanford.tls.certresolver=le"
       - "traefik.http.routers.stanford.service=nginx-public"
+      # NOTE: the bare-HTTP `dnd` device feed moved to the `dnd-health` service
+      # below — it now serves http://public.willflix.org/dnd/*.txt live from the
+      # app instead of static files in appdata/nginx-public/dnd/.
       - "traefik.docker.network=config_traefik_public"
     networks:
       - traefik_public

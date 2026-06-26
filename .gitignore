@@ -23,6 +23,10 @@ __pycache__/
 node_modules/
 .venv/
 
+# D&D health tracker (dnd-health service) keeps its own git repo; built from
+# docker/images/dnd-health/server. Tracked there, not here.
+docker/images/dnd-health/
+
 # MemPalace vector DB (large binaries — not git-friendly; back up separately)
 mempalace/
 
