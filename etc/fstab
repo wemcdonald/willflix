@@ -31,7 +31,10 @@ LABEL=MediaParity3  /Volumes/MediaParity3    ext4    defaults,nofail,x-systemd.d
 LABEL=MediaSpare    /Volumes/MediaSpare      ext4    defaults,nofail,x-systemd.device-timeout=30s,x-systemd.mount-timeout=30s        0       2 # !!
 LABEL=Bonus1        /Volumes/Bonus1          ext4    defaults,nofail,x-systemd.device-timeout=30s,x-systemd.mount-timeout=30s        0       2 # !!
 
-LABEL=Plex          /Volumes/Plex            ext4    defaults,nofail,x-systemd.device-timeout=30s,x-systemd.mount-timeout=30s,errors=remount-ro 0 2
+# Plex now lives on ZFS dataset rpool/plex (migrated 2026-06-25; docs/runbooks/zfs-datasets.md).
+# SATA drive (label Plex) kept unmounted as a fallback. Do NOT re-enable — it would
+# race the ZFS mount for /Volumes/Plex on boot.
+#LABEL=Plex          /Volumes/Plex            ext4    defaults,nofail,x-systemd.device-timeout=30s,x-systemd.mount-timeout=30s,errors=remount-ro 0 2
 #UUID=3ae659eb-395c-489f-bc34-741d93df243d  /Volumes/Plex  ext4  defaults,nofail,x-systemd.device-timeout=30s,x-systemd.mount-timeout=30s,errors=remount-ro  0  2
 
 ## RAMdisk
